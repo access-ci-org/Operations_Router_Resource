@@ -1,0 +1,61 @@
+{
+    "ELASTIC_HOSTS": ["https://vpc-information-warehouse-test7-an2g46x6mo5puultw7yiypgahq.us-east-2.es.amazonaws.com:443/"],
+    "LOG_FILE": "/soft/warehouse-apps-1.0/Manage-Resource-V3/var/route_resource.log",
+    "LOG_LEVEL": "warning",
+    "RUN_DIR": "/soft/warehouse-apps-1.0/Manage-Resource-V3/var",
+    "PID_FILE": "/soft/warehouse-apps-1.0/Manage-Resource-V3/var/route_resource.pid",
+    "STEPS": [
+        {   "LOCALTYPE": "Science Gateway",
+            "CATALOGURN": "urn:ogf:glue2:info.xsede.org:catalog:rsp:gateway.providers",
+            "URNPREFIX": "urn:ogf:glue2:info.xsede.org:resource:rsp:gateway.providers:",
+            "SOURCEDEFAULTURL": "https://software.xsede.org/science-gateways",
+            "DESTINATION": "function:Write_RSP_Gateway_Providers"
+        },
+        {   "LOCALTYPE": "Support Contact",
+            "CATALOGURN": "urn:ogf:glue2:info.xsede.org:catalog:rsp:support.organizations",
+            "URNPREFIX": "urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:",
+            "SOURCEDEFAULTURL": "https://software.xsede.org/support-organizations",
+            "DESTINATION": "function:Write_RSP_Support_Providers"
+        },
+        {   "LOCALTYPE": "Resource Site Information",
+            "CATALOGURN": "urn:ogf:glue2:info.xsede.org:catalog:rsp:hpc.providers",
+            "URNPREFIX": "urn:ogf:glue2:info.xsede.org:resource:rsp:hpc.providers:",
+            "SOURCEDEFAULTURL": "https://software.xsede.org/resource-sites",
+            "DESTINATION": "function:Write_RSP_HPC_Providers"
+        },
+        {   "LOCALTYPE": "Resource Information",
+            "CATALOGURN": "urn:ogf:glue2:info.xsede.org:catalog:rsp:hpc.resources",
+            "URNPREFIX": "urn:ogf:glue2:info.xsede.org:resource:rsp:hpc.resources:",
+            "SOURCEDEFAULTURL": "https://software.xsede.org/resources",
+            "DESTINATION": "function:Write_RSP_HPC_Resources"
+        },
+        {   "LOCALTYPE": "Network Service",
+            "CATALOGURN": "urn:ogf:glue2:info.xsede.org:catalog:rsp:network.services",
+            "URNPREFIX": "urn:ogf:glue2:info.xsede.org:resource:rsp:network.services:",
+            "SOURCEDEFAULTURL": "https://software.xsede.org/operational-software-services",
+            "DESTINATION": "function:Write_RSP_Network_Service"
+        },
+        {   "LOCALTYPE": "Network Service",
+            "CATALOGURN": "urn:ogf:glue2:info.xsede.org:catalog:glue2:network.services",
+            "URNPREFIX": "urn:ogf:glue2:info.xsede.org:resource:glue2:network.services:",
+            "DESTINATION": "function:Write_Glue2_Network_Service"
+        },
+        {   "LOCALTYPE": "Executable Software",
+            "CATALOGURN": "urn:ogf:glue2:info.xsede.org:catalog:rsp:executable.software",
+            "URNPREFIX": "urn:ogf:glue2:info.xsede.org:resource:rsp:executable.software:",
+            "SOURCEDEFAULTURL": "https://software.xsede.org/operational-software-services",
+            "DESTINATION": "function:Write_RSP_Executable_Software"
+        },
+        {   "LOCALTYPE": "Executable Software",
+            "CATALOGURN": "urn:ogf:glue2:info.xsede.org:catalog:glue2:executable.software",
+            "URNPREFIX": "urn:ogf:glue2:info.xsede.org:resource:glue2:executable.software:",
+            "DESTINATION": "function:Write_Glue2_Executable_Software"
+        },
+        {   "LOCALTYPE": "Packaged Software",
+            "CATALOGURN": "urn:ogf:glue2:info.xsede.org:catalog:rsp:packaged.software",
+            "URNPREFIX": "urn:ogf:glue2:info.xsede.org:resource:rsp:packaged.software:",
+            "SOURCEDEFAULTURL": "https://software.xsede.org/packaged-software",
+            "DESTINATION": "function:Write_RSP_Packaged_Software"
+        }
+    ]
+}
