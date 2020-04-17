@@ -3,44 +3,28 @@ do_start () {
     echo -n "Starting ${DAEMON_NAME}:"
     export LD_LIBRARY_PATH=${PYTHON_BASE}/lib
     source ${PIPENV_BASE}/bin/activate
-    ${PYTHON_BIN} ${DAEMON_BIN} start ${DAEMON_OPTS}
-    RETVAL=$?
-}
-do_stop () {
-    echo -n "Stopping ${DAEMON_NAME}:"
-    export LD_LIBRARY_PATH=${PYTHON_BASE}/lib
-    source ${PIPENV_BASE}/bin/activate
-    ${PYTHON_BIN} ${DAEMON_BIN} stop ${DAEMON_OPTS}
+    exec ${PYTHON_BIN} ${DAEMON_BIN} --daemon -l info $@ ${DAEMON_OPTS}
     RETVAL=$?
 }
 do_debug () {
-    echo -n "Debugging: ${PIPENV_BASE}/bin/python ${DAEMON_BIN} $@ ${DAEMON_OPTS}"
+    echo -n "Debugging: ${PIPENV_BASE}/bin/python ${DAEMON_BIN} -l debug $@ ${DAEMON_OPTS}"
     export LD_LIBRARY_PATH=${PYTHON_BASE}/lib
     source ${PIPENV_BASE}/bin/activate
-    ${PYTHON_BIN} ${DAEMON_BIN} $@ ${DAEMON_OPTS}
+    exec ${PYTHON_BIN} ${DAEMON_BIN} -l debug $@ ${DAEMON_OPTS}
     RETVAL=$?
 }
 
 case "$1" in
-    start|stop)
-        do_${1}
+    start)
+        do_start ${@:2}
         ;;
 
     debug)
         do_debug ${@:2}
         ;;
 
-    restart|reload|force-reload)
-        do_stop
-        do_start
-        ;;
-
-    status)
-        echo "Haven't implemented status"
-        ;;
-
     *)
-        echo "Usage: /etc/init.d/${DAEMON_NAME} {start|stop|restart|status}"
+        echo "Usage: ${DAEMON_NAME} {start|debug}"
         exit 1
         ;;
 

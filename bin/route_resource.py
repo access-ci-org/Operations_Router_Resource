@@ -143,10 +143,36 @@ class WarehouseRouter():
             self.logger.error('Missing config STEPS')
             sys.exit(1)
         
+        if self.config.get('PID_FILE'):
+            pidfile_path =  self.config['PID_FILE']
+        else:
+            name = os.path.basename(__file__).replace('.py', '')
+            pidfile_path = '/var/run/{}/{}.pid'.format(name, name)
+        self.lock = pidlockfile.PIDLockFile(pidfile_path, timeout=5)
+        try:
+            self.lock.acquire()
+        except:
+            self.logger.error('Failed to acquire PIDLockFile={}'.format(pidfile_path))
+            sys.exit(1)
+
+        signal.signal(signal.SIGINT, self.exit_signal)
+        signal.signal(signal.SIGTERM, self.exit_signal)
+
+        if self.args.daemon and 'LOG_FILE' in self.config:
+            self.stdout_path = self.config['LOG_FILE'].replace('.log', '.daemon.log')
+            self.stderr_path = self.stdout_path
+            self.SaveDaemonStdOut(self.stdout_path)
+            sys.stdout = open(self.stdout_path, 'wt+')
+            sys.stderr = open(self.stderr_path, 'wt+')
+
         mode =  ('daemon,' if self.args.daemon else 'interactive,') + \
             ('once' if self.args.once else 'continuous')
         self.logger.info('Starting mode=({}), program={}, pid={}, uid={}({})'.format(mode, os.path.basename(__file__), os.getpid(), os.geteuid(), pwd.getpwuid(os.geteuid()).pw_name))
-            
+
+        configured_database = django_settings.DATABASES['default'].get('HOST', None)
+        if configured_database:
+            self.logger.info('Warehouse database={}'.format(configured_database))
+
     def SaveDaemonStdOut(self, path):
         # Save daemon log file using timestamp only if it has anything unexpected in it
         try:
@@ -230,7 +256,7 @@ class WarehouseRouter():
             return({contype: content})
         except ValueError as e:
             self.logger.error('Error "{}" parsing file={}'.format(e, file))
-            sys.exit(1)
+            self.exit(1)
 
 ########## CUSTOMIZATIONS START ##########
     #
@@ -1058,27 +1084,6 @@ class WarehouseRouter():
 #        return(rc)
 
     def run(self):
-        signal.signal(signal.SIGINT, self.exit_signal)
-        signal.signal(signal.SIGTERM, self.exit_signal)
-
-        if self.config.get('PID_FILE'):
-            pidfile_path =  self.config['PID_FILE']
-        else:
-            name = os.path.basename(__file__).replace('.py', '')
-            pidfile_path = '/var/run/{}/{}.pid'.format(name, name)
-        lock = pidlockfile.PIDLockFile(pidfile_path, timeout=5)
-
-        if self.args.daemon and 'LOG_FILE' in self.config:
-            self.stdout_path = self.config['LOG_FILE'].replace('.log', '.daemon.log')
-            self.stderr_path = self.stdout_path
-            self.SaveDaemonStdOut(self.stdout_path)
-            sys.stdout = open(self.stdout_path, 'wt+')
-            sys.stderr = open(self.stderr_path, 'wt+')
-
-        configured_database = django_settings.DATABASES['default'].get('HOST', None)
-        if configured_database:
-            self.logger.info('Warehouse database={}'.format(configured_database))
-
         # Loading all the Catalog entries for our affiliation
         self.CATALOGS = {}
         for cat in ResourceV3Catalog.objects.filter(Affiliation__exact=self.Affiliation):
@@ -1088,10 +1093,10 @@ class WarehouseRouter():
         for stepconf in self.config['STEPS']:
             if 'CATALOGURN' not in stepconf:
                 self.logger.error('Step CATALOGURN is missing or invalid')
-                sys.exit(1)
+                self.exit(1)
             if stepconf['CATALOGURN'] not in self.CATALOGS:
                 self.logger.error('Step CATALOGURN is not define in Resource Catalogs')
-                sys.exit(1)
+                self.exit(1)
             myCAT = self.CATALOGS[stepconf['CATALOGURN']]
             stepconf['SOURCEURL'] = myCAT['CatalogAPIURL']
 
@@ -1099,25 +1104,25 @@ class WarehouseRouter():
                 SRCURL = urlparse(stepconf['SOURCEURL'])
             except:
                 self.logger.error('Step SOURCE is missing or invalid')
-                sys.exit(1)
+                self.exit(1)
             if SRCURL.scheme not in ['file', 'http', 'https']:
                 self.logger.error('Source not {file, http, https}')
-                sys.exit(1)
+                self.exit(1)
             stepconf['SRCURL'] = SRCURL
             
             try:
                 DSTURL = urlparse(stepconf['DESTINATION'])
             except:
                 self.logger.error('Step DESTINATION is missing or invalid')
-                sys.exit(1)
+                self.exit(1)
             if DSTURL.scheme not in ['file', 'analyze', 'function', 'memory']:
                 self.logger.error('Destination is not one of {file, analyze, function, memory}')
-                sys.exit(1)
+                self.exit(1)
             stepconf['DSTURL'] = DSTURL
             
             if SRCURL.scheme in ['file'] and DSTURL.scheme in ['file']:
                 self.logger.error('Source and Destination can not both be a {file}')
-                sys.exit(1)
+                self.exit(1)
                 
             # Merge CATALOG config and STEP config, with latter taking precendence
             self.STEPS.append({**self.CATALOGS[stepconf['CATALOGURN']], **stepconf})
@@ -1173,7 +1178,12 @@ class WarehouseRouter():
 
     def exit_signal(self, my_signal, frame):
         self.logger.critical('Caught signal={}({}), exiting...'.format(my_signal, signal.Signals(my_signal).name))
+        self.lock.release()
         sys.exit(1)
+        
+    def exit(self, rc):
+        self.lock.release()
+        sys.exit(rc)
 
 ########## CUSTOMIZATIONS END ##########
 
@@ -1186,4 +1196,5 @@ if __name__ == '__main__':
         router.logger.error(msg)
         traceback.print_exc(file=sys.stdout)
         rc = 1
+    router.lock.release()
     sys.exit(rc)

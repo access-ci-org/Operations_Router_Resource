@@ -3,13 +3,9 @@ Description=Information Services Resource-V3 Content Router
 After=network.target remote-fs.target nss-lookup.target
 
 [Service]
-Type=forking
+Type=simple
 EnvironmentFile=/soft/warehouse-apps-1.0/Manage-Resource-V3/PROD/sbin/route_resource.sysconfig
 ExecStart=/soft/warehouse-apps-1.0/Manage-Resource-V3/PROD/sbin/route_resource.sh start
-ExecReload=/soft/warehouse-apps-1.0/Manage-Resource-V3/PROD/sbin/route_resource.sh restart
-ExecStop=/soft/warehouse-apps-1.0/Manage-Resource-V3/PROD/sbin/route_resource.sh stop
-PIDFile=/soft/warehouse-apps-1.0/Manage-Resource-V3/var/route_resource.pid
-#PrivateTmp=true
 User=software
 Group=admin
 Restart=always
