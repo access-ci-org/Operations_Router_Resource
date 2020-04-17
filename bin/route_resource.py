@@ -27,11 +27,10 @@
 # Software:Packaged
 #   Write_RSP_Packaged_Software   -> Software:PackagedSoftware:sofware.xsede.org
 #
-# TODO: Convert memory.HPCRESOURCEMAP[ResourceID]
 import argparse
 from collections import Counter
 import datetime
-from datetime import datetime, timezone, tzinfo, timedelta
+from datetime import datetime, timezone, timedelta
 from hashlib import md5
 import http.client as httplib
 import json
@@ -43,7 +42,7 @@ import re
 import shutil
 import signal
 import ssl
-import sys
+import sys, traceback
 from time import sleep
 from urllib.parse import urlparse
 import pytz
@@ -51,19 +50,19 @@ Central = pytz.timezone("US/Central")
 
 import django
 django.setup()
-from django.db import DataError, IntegrityError
 from django.conf import settings as django_settings
+from django.db import DataError, IntegrityError
 from django.forms.models import model_to_dict
-#from django.utils.dateparse import parse_datetime
 from resource_v3.models import *
 from processing_status.process import ProcessingActivity
+
+from lockfile import pidlockfile
+#import daemon
 
 import elasticsearch_dsl.connections
 from elasticsearch import Elasticsearch, RequestsHttpConnection
 
 import pdb
-
-from daemon import runner
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -71,16 +70,14 @@ def eprint(*args, **kwargs):
 class WarehouseRouter():
     def __init__(self, peek_sleep=10, offpeek_sleep=60, max_stale=24 * 60):
         parser = argparse.ArgumentParser()
-        parser.add_argument('daemon_action', nargs='?', choices=('start', 'stop', 'restart'), \
-                            help='{start, stop, restart} daemon')
+        parser.add_argument('--once', action='store_true', \
+                            help='Run once and exit, or run continuous with sleep between interations (default)')
+        parser.add_argument('--daemon', action='store_true', \
+                            help='Run as daemon redirecting stdout, stderr to a file, or interactive (default)')
         parser.add_argument('-l', '--log', action='store', \
                             help='Logging level (default=warning)')
         parser.add_argument('-c', '--config', action='store', dest='config', required=True, \
                             help='Configuration file')
-        parser.add_argument('--verbose', action='store_true', \
-                            help='Verbose output')
-        parser.add_argument('--daemon', action='store_true', \
-                            help='Daemonize execution')
         parser.add_argument('--dev', action='store_true', \
                             help='Running in development environment')
         parser.add_argument('--pdb', action='store_true', \
@@ -96,7 +93,8 @@ class WarehouseRouter():
             with open(config_path, 'r') as file:
                 conf=file.read()
         except IOError as e:
-            raise
+            eprint('Error "{}" reading config={}'.format(e, config_path))
+            sys.exit(1)
         try:
             self.config = json.loads(conf)
         except ValueError as e:
@@ -141,78 +139,28 @@ class WarehouseRouter():
         self.WAREHOUSE_API_VERSION = 'v3'
         self.WAREHOUSE_CATALOG = 'ResourceV3'
 
-
-        # Loading all the Catalog entries for our affiliation
-        self.CATALOGS = {}
-        for cat in ResourceV3Catalog.objects.filter(Affiliation__exact=self.Affiliation):
-            self.CATALOGS[cat.ID] = model_to_dict(cat)
-
-        self.STEPS = []
-        log_destination_database = None
-        for stepconf in self.config['STEPS']:
-            if 'CATALOGURN' not in stepconf:
-                self.logger.error('Step CATALOGURN is missing or invalid')
-                sys.exit(1)
-            if stepconf['CATALOGURN'] not in self.CATALOGS:
-                self.logger.error('Step CATALOGURN is not define in Resource Catalogs')
-                sys.exit(1)
-            myCAT = self.CATALOGS[stepconf['CATALOGURN']]
-            stepconf['SOURCEURL'] = myCAT['CatalogAPIURL']
-
-            try:
-                SRCURL = urlparse(stepconf['SOURCEURL'])
-            except:
-                self.logger.error('Step SOURCE is missing or invalid')
-                sys.exit(1)
-            if SRCURL.scheme not in ['file', 'http', 'https']:
-                self.logger.error('Source not {file, http, https}')
-                sys.exit(1)
-            stepconf['SRCURL'] = SRCURL
+        if len(self.config['STEPS']) < 1:
+            self.logger.error('Missing config STEPS')
+            sys.exit(1)
+        
+        mode =  ('daemon,' if self.args.daemon else 'interactive,') + \
+            ('once' if self.args.once else 'continuous')
+        self.logger.info('Starting mode=({}), program={}, pid={}, uid={}({})'.format(mode, os.path.basename(__file__), os.getpid(), os.geteuid(), pwd.getpwuid(os.geteuid()).pw_name))
             
-            try:
-                DSTURL = urlparse(stepconf['DESTINATION'])
-            except:
-                self.logger.error('Step DESTINATION is missing or invalid')
-                sys.exit(1)
-            if DSTURL.scheme not in ['file', 'analyze', 'function', 'memory']:
-                self.logger.error('Destination is not one of {file, analyze, function, memory}')
-                sys.exit(1)
-            stepconf['DSTURL'] = DSTURL
-            
-            if SRCURL.scheme in ['file'] and DSTURL.scheme in ['file']:
-                self.logger.error('Source and Destination can not both be a {file}')
-                sys.exit(1)
-                
-            if not log_destination_database and DSTURL.scheme == 'function':
-                log_destination_database = django_settings.DATABASES['default']['HOST']
-            # Merge CATALOG config and STEP config, with latter taking precendence
-            self.STEPS.append({**self.CATALOGS[stepconf['CATALOGURN']], **stepconf})
-
-        if self.args.daemon_action:
-            mode = 'daemon({})'.format(self.args.daemon_action)
-            # Initialize logging, pidfile
-            self.stdin_path = '/dev/null'
-            if 'LOG_FILE' in self.config:
-                self.stdout_path = self.config['LOG_FILE'].replace('.log', '.daemon.log')
-                self.stderr_path = self.stdout_path
-            else:
-                self.stdout_path = '/dev/tty'
-                self.stderr_path = '/dev/tty'
-            self.SaveDaemonLog(self.stdout_path)
-            self.pidfile_timeout = 5
-            if 'PID_FILE' in self.config:
-                self.pidfile_path =  self.config['PID_FILE']
-            else:
-                name = os.path.basename(__file__).replace('.py', '')
-                self.pidfile_path = '/var/run/{}/{}.pid'.format(name, name)
-        else:
-            mode = 'interactive'
-
-        signal.signal(signal.SIGINT, self.exit_signal)
-        signal.signal(signal.SIGTERM, self.exit_signal)
-        self.logger.info('Starting {}, program={}, pid={}, uid={}({})'.format(mode, os.path.basename(__file__), os.getpid(), os.geteuid(), pwd.getpwuid(os.geteuid()).pw_name))
-        if log_destination_database:
-            self.logger.info('Destination warehouse database={}'.format(log_destination_database))
+    def SaveDaemonStdOut(self, path):
+        # Save daemon log file using timestamp only if it has anything unexpected in it
+        try:
+            with open(path, 'r') as file:
+                lines = file.read()
+                file.close()
+                if not re.match("^started with pid \d+$", lines) and not re.match("^$", lines):
+                    ts = datetime.strftime(datetime.now(), '%Y-%m-%d_%H:%M:%S')
+                    newpath = '{}.{}'.format(path, ts)
+                    shutil.copy(path, newpath)
+                    self.logger.debug('SaveDaemonStdOut as {}'.format(newpath))
+        except Exception as e:
+            print('Exception in SaveDaemonStdOut({})'.format(path))
+        return
 
     def CATALOGURN_to_URL(self, id):
         return('{}/resource-api/{}/catalog/id/{}/'.format(self.WAREHOUSE_API_PREFIX, self.WAREHOUSE_API_VERSION, id))
@@ -328,6 +276,14 @@ class WarehouseRouter():
         except Exception as e:
             self.logger.error('{} deleting Relations for Resource ID={}: {}'.format(type(e).__name__, myURN, e))
     #
+    # Log how long a processing step took
+    #
+    def Log_STEP(self, me):
+        summary_msg = 'Processed {} in {:.3f}/seconds: {}/updates, {}/deletes, {}/skipped'.format(me,
+            self.PROCESSING_SECONDS[me],
+            self.STATS[me + '.Update'], self.STATS[me + '.Delete'], self.STATS[me + '.Skip'])
+        self.logger.info(summary_msg)
+    #
     # This function populates self.GWPROVIDER_URNMAP
     #
     def Write_RSP_Gateway_Providers(self, content, contype, config):
@@ -339,7 +295,7 @@ class WarehouseRouter():
         
         cur = {}   # Current items
         new = {}   # New items
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
+        for item in ResourceV3Local.objects.filter(Affiliation__exact = self.Affiliation).filter(ID__startswith = config['URNPREFIX']):
             cur[item.ID] = item
 
         for item in content[contype]:
@@ -393,7 +349,7 @@ class WarehouseRouter():
         self.Delete_OLD(contype, cur, new)
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.log_target(me)
+        self.Log_STEP(me)
         return(0, '')
 
     ####################################
@@ -469,7 +425,7 @@ class WarehouseRouter():
         self.Delete_OLD(contype, cur, new)
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.log_target(me)
+        self.Log_STEP(me)
         return(0, '')
         
     ####################################
@@ -539,7 +495,7 @@ class WarehouseRouter():
         self.Delete_OLD(contype, cur, new)
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.log_target(me)
+        self.Log_STEP(me)
         return(0, '')
 
     ####################################
@@ -623,7 +579,7 @@ class WarehouseRouter():
         self.Delete_OLD(contype, cur, new)
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.log_target(me)
+        self.Log_STEP(me)
         return(0, '')
 
     ####################################
@@ -709,7 +665,7 @@ class WarehouseRouter():
         self.Delete_OLD(contype, cur, new)
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.log_target(me)
+        self.Log_STEP(me)
         return(0, '')
 
     ####################################
@@ -725,7 +681,6 @@ class WarehouseRouter():
         for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
             cur[item.ID] = item
 
-        # TODO
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
             mySiteID = self.HPCRESOURCE_INFO.get(item['ResourceID'])['SiteID']
@@ -813,7 +768,7 @@ class WarehouseRouter():
         self.Delete_OLD(contype, cur, new)
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.log_target(me)
+        self.Log_STEP(me)
         return(0, '')
 
     ####################################
@@ -900,7 +855,7 @@ class WarehouseRouter():
         self.Delete_OLD(contype, cur, new)
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.log_target(me)
+        self.Log_STEP(me)
         return(0, '')
 
     ####################################
@@ -1006,7 +961,7 @@ class WarehouseRouter():
         self.Delete_OLD(contype, cur, new)
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.log_target(me)
+        self.Log_STEP(me)
         return(0, '')
 
     def Write_RSP_Packaged_Software(self, content, contype, config):
@@ -1080,35 +1035,93 @@ class WarehouseRouter():
         self.Delete_OLD(contype, cur, new)
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.log_target(me)
+        self.Log_STEP(me)
         return(0, '')
 
-    def SaveDaemonLog(self, path):
-        # Save daemon log file using timestamp only if it has anything unexpected in it
-        try:
-            with open(path, 'r') as file:
-                lines = file.read()
-                file.close()
-                if not re.match("^started with pid \d+$", lines) and not re.match("^$", lines):
-                    ts = datetime.strftime(datetime.now(), '%Y-%m-%d_%H:%M:%S')
-                    newpath = '{}.{}'.format(path, ts)
-                    shutil.copy(path, newpath)
-                    print('SaveDaemonLog as {}'.format(newpath))
-        except Exception as e:
-            print('Exception in SaveDaemonLog({})'.format(path))
-        return
-
-    def exit_signal(self, signal, frame):
-        self.logger.critical('Caught signal={}, exiting...'.format(signal))
-        sys.exit(0)
-
-    def smart_sleep(self, last_run):
-        # Between 6 AM and 9 PM Central
-        current_sleep = self.peak_sleep if 6 <= datetime.now(Central).hour <= 21 else self.offpeek_sleep
-        self.logger.debug('sleep({})'.format(current_sleep))
-        sleep(current_sleep)
+#    def run_wrapper(self):
+#       Obsolete, systemd daemonizes
+#        self.signal_map = {
+#            signal.SIGINT: self.exit_signal,
+#            signal.SIGTERM: self.exit_signal
+#        }
+#        with daemon.DaemonContext(
+#                detach_process = False,
+#                stdin = sys.stdin,
+#                stdout = sys.stdout,
+#                stderr = sys.stderr,
+#                pidfile = lockfile.FileLock(pidfile_path),
+#                signal_map = self.signal_map,
+#                files_preserve = [self.handler.stream],
+#                working_directory = self.config['RUN_DIR'],
+#        ) as ctx:
+#            rc = self.run()
+#        return(rc)
 
     def run(self):
+        signal.signal(signal.SIGINT, self.exit_signal)
+        signal.signal(signal.SIGTERM, self.exit_signal)
+
+        if self.config.get('PID_FILE'):
+            pidfile_path =  self.config['PID_FILE']
+        else:
+            name = os.path.basename(__file__).replace('.py', '')
+            pidfile_path = '/var/run/{}/{}.pid'.format(name, name)
+        lock = pidlockfile.PIDLockFile(pidfile_path, timeout=5)
+
+        if self.args.daemon and 'LOG_FILE' in self.config:
+            self.stdout_path = self.config['LOG_FILE'].replace('.log', '.daemon.log')
+            self.stderr_path = self.stdout_path
+            self.SaveDaemonStdOut(self.stdout_path)
+            sys.stdout = open(self.stdout_path, 'wt+')
+            sys.stderr = open(self.stderr_path, 'wt+')
+
+        configured_database = django_settings.DATABASES['default'].get('HOST', None)
+        if configured_database:
+            self.logger.info('Warehouse database={}'.format(configured_database))
+
+        # Loading all the Catalog entries for our affiliation
+        self.CATALOGS = {}
+        for cat in ResourceV3Catalog.objects.filter(Affiliation__exact=self.Affiliation):
+            self.CATALOGS[cat.ID] = model_to_dict(cat)
+
+        self.STEPS = []
+        for stepconf in self.config['STEPS']:
+            if 'CATALOGURN' not in stepconf:
+                self.logger.error('Step CATALOGURN is missing or invalid')
+                sys.exit(1)
+            if stepconf['CATALOGURN'] not in self.CATALOGS:
+                self.logger.error('Step CATALOGURN is not define in Resource Catalogs')
+                sys.exit(1)
+            myCAT = self.CATALOGS[stepconf['CATALOGURN']]
+            stepconf['SOURCEURL'] = myCAT['CatalogAPIURL']
+
+            try:
+                SRCURL = urlparse(stepconf['SOURCEURL'])
+            except:
+                self.logger.error('Step SOURCE is missing or invalid')
+                sys.exit(1)
+            if SRCURL.scheme not in ['file', 'http', 'https']:
+                self.logger.error('Source not {file, http, https}')
+                sys.exit(1)
+            stepconf['SRCURL'] = SRCURL
+            
+            try:
+                DSTURL = urlparse(stepconf['DESTINATION'])
+            except:
+                self.logger.error('Step DESTINATION is missing or invalid')
+                sys.exit(1)
+            if DSTURL.scheme not in ['file', 'analyze', 'function', 'memory']:
+                self.logger.error('Destination is not one of {file, analyze, function, memory}')
+                sys.exit(1)
+            stepconf['DSTURL'] = DSTURL
+            
+            if SRCURL.scheme in ['file'] and DSTURL.scheme in ['file']:
+                self.logger.error('Source and Destination can not both be a {file}')
+                sys.exit(1)
+                
+            # Merge CATALOG config and STEP config, with latter taking precendence
+            self.STEPS.append({**self.CATALOGS[stepconf['CATALOGURN']], **stepconf})
+    
         while True:
             self.STATS = Counter()
             self.PROCESSING_SECONDS = {}
@@ -1146,32 +1159,31 @@ class WarehouseRouter():
                             (datetime.now(timezone.utc) - start_utc).total_seconds())
                 pa.FinishActivity(rc, message)
      
-            if not self.args.daemon_action:
+            if self.args.once:
                 break
+            # Continuous
             self.smart_sleep(start_utc)
-                
-    def log_target(self, me):
-        summary_msg = 'Processed {} in {:.3f}/seconds: {}/updates, {}/deletes, {}/skipped'.format(me,
-            self.PROCESSING_SECONDS[me],
-            self.STATS[me + '.Update'], self.STATS[me + '.Delete'], self.STATS[me + '.Skip'])
-        self.logger.info(summary_msg)
+        return(0)
+
+    def smart_sleep(self, last_run):
+        # Between 6 AM and 9 PM Central
+        current_sleep = self.peak_sleep if 6 <= datetime.now(Central).hour <= 21 else self.offpeek_sleep
+        self.logger.debug('sleep({})'.format(current_sleep))
+        sleep(current_sleep)
+
+    def exit_signal(self, my_signal, frame):
+        self.logger.critical('Caught signal={}({}), exiting...'.format(my_signal, signal.Signals(my_signal).name))
+        sys.exit(1)
 
 ########## CUSTOMIZATIONS END ##########
 
 if __name__ == '__main__':
     try:
         router = WarehouseRouter()
-        if router.args.daemon_action is None:   # Interactive execution, just call the run function
-            myrouter = router.run()
-        else:
-            # Daemon execution
-            daemon_runner = runner.DaemonRunner(router)
-            daemon_runner.daemon_context.files_preserve = [router.handler.stream]
-            daemon_runner.daemon_context.working_directory = router.config['RUN_DIR']
-            daemon_runner.do_action()
+        rc = router.run()
     except Exception as e:
         msg = '{} Exception: {}'.format(type(e).__name__, e)
         router.logger.error(msg)
-        sys.exit(1)
-    else:
-        sys.exit(0)
+        traceback.print_exc(file=sys.stdout)
+        rc = 1
+    sys.exit(rc)
