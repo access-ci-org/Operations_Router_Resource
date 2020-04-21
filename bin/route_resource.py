@@ -57,7 +57,6 @@ from resource_v3.models import *
 from processing_status.process import ProcessingActivity
 
 from lockfile import pidlockfile
-#import daemon
 
 import elasticsearch_dsl.connections
 from elasticsearch import Elasticsearch, RequestsHttpConnection
@@ -172,6 +171,15 @@ class WarehouseRouter():
         configured_database = django_settings.DATABASES['default'].get('HOST', None)
         if configured_database:
             self.logger.info('Warehouse database={}'.format(configured_database))
+
+    def exit_signal(self, my_signal, frame):
+        self.logger.critical('Caught signal={}({}), exiting...'.format(my_signal, signal.Signals(my_signal).name))
+        self.lock.release()
+        sys.exit(1)
+        
+    def exit(self, rc):
+        self.lock.release()
+        sys.exit(rc)
 
     def SaveDaemonStdOut(self, path):
         # Save daemon log file using timestamp only if it has anything unexpected in it
@@ -901,7 +909,7 @@ class WarehouseRouter():
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
             myProviderID = self.HPCPROVIDER_URNMAP.get(item['SiteID'])
             mySiteID = item.get('SiteID')
-            mySiteURN = self.HPCPROVIDER_URNMAP[mySiteID]
+            mySiteURN = self.HPCPROVIDER_URNMAP.get(mySiteID)
             myResourceURN = self.HPCRESOURCE_URNMAP.get(item['ResourceID'])
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
@@ -1167,23 +1175,14 @@ class WarehouseRouter():
             if self.args.once:
                 break
             # Continuous
-            self.smart_sleep(start_utc)
+            self.smart_sleep()
         return(0)
 
-    def smart_sleep(self, last_run):
+    def smart_sleep(self):
         # Between 6 AM and 9 PM Central
         current_sleep = self.peak_sleep if 6 <= datetime.now(Central).hour <= 21 else self.offpeek_sleep
         self.logger.debug('sleep({})'.format(current_sleep))
         sleep(current_sleep)
-
-    def exit_signal(self, my_signal, frame):
-        self.logger.critical('Caught signal={}({}), exiting...'.format(my_signal, signal.Signals(my_signal).name))
-        self.lock.release()
-        sys.exit(1)
-        
-    def exit(self, rc):
-        self.lock.release()
-        sys.exit(rc)
 
 ########## CUSTOMIZATIONS END ##########
 
