@@ -723,7 +723,7 @@ class WarehouseRouter():
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
             if mySiteURN:
-                myNEWRELATIONS[mySiteURN] = 'Supported By'
+                myNEWRELATIONS[mySiteURN] = 'Operated By'
             if myResourceURN:
                 myNEWRELATIONS[myResourceURN] = 'Hosted On'
 
@@ -830,7 +830,7 @@ class WarehouseRouter():
             if len(item.get('ScienceGatewayName') or '') > 0:
                 myGatewayID = self.GWPROVIDER_URNMAP.get(item['ScienceGatewayName'])
                 if myGatewayID:
-                    myNEWRELATIONS[myGatewayID] = 'Gateway Integrated'
+                    myNEWRELATIONS[myGatewayID] = 'Available Through'
             if len(item.get('SupportOrganizationGlobalID') or '') > 0:
                 myRelatedID = self.SUPPORTPROVIDER_URNMAP.get(item['SupportOrganizationGlobalID'])
                 if myRelatedID:
@@ -914,7 +914,7 @@ class WarehouseRouter():
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
             if mySiteURN:
-                myNEWRELATIONS[mySiteURN] = 'Supported By'
+                myNEWRELATIONS[mySiteURN] = 'Operated By'
             if myResourceURN:
                 myNEWRELATIONS[myResourceURN] = 'Hosted On'
             
