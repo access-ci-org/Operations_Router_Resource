@@ -125,6 +125,8 @@ class WarehouseRouter():
         self.GWPROVIDER_URNMAP = self.memory['gateway_urnmap']
         self.memory['support_urnmap'] = {}       # Mapping of Support GlobalID to its GLOBALURN
         self.SUPPORTPROVIDER_URNMAP = self.memory['support_urnmap']
+        self.memory['support_url2urn'] = {}      # Mapping of Support GlobalID to its Information Services URL
+        self.SUPPORTPROVIDER_URL2URN = self.memory['support_url2urn']
         self.memory['sp_urnmap'] = {}            # Mapping of SiteID to its GLOBALURN
         self.HPCPROVIDER_URNMAP = self.memory['sp_urnmap']
         self.memory['hpc_urnmap'] = {}           # Mapping of ResourceID to its GLOBALURN
@@ -403,10 +405,13 @@ class WarehouseRouter():
             cur[item.ID] = item
 
         for item in content[contype]:
-            if (item.get('GlobalID') or '') == 'helpdesk.xsede.org': # We're only using HPC_Provider for now
-                continue
+#           As of 2020-05-12 we need all the support providers, JP
+#            if (item.get('GlobalID') or '') == 'helpdesk.xsede.org': # We're only using HPC_Provider for now
+#                continue
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
             self.SUPPORTPROVIDER_URNMAP[item['GlobalID']] = myGLOBALURN
+            myINFOURL = 'https://info.xsede.org/wh1/xcsr-db/v1/supportcontacts/globalid/{}/'.format(item['GlobalID'])
+            self.SUPPORTPROVIDER_URL2URN[myINFOURL] = myGLOBALURN
             try:
                 local = ResourceV3Local(
                             ID = myGLOBALURN,
@@ -558,7 +563,7 @@ class WarehouseRouter():
             siteURN = self.HPCPROVIDER_URNMAP.get(item.get('SiteID', ''), None)
             if siteURN:
                 myProviderID = self.HPCPROVIDER_URNMAP.get(item['SiteID'])
-                myNEWRELATIONS[siteURN] = 'Operated By'
+                myNEWRELATIONS[siteURN] = 'Provided By'
             else:
                 myProviderID = None
             try:
@@ -723,9 +728,15 @@ class WarehouseRouter():
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
             if mySiteURN:
-                myNEWRELATIONS[mySiteURN] = 'Operated By'
+                myNEWRELATIONS[mySiteURN] = 'Provided By'
             if myResourceURN:
                 myNEWRELATIONS[myResourceURN] = 'Hosted On'
+            try: # Convert SupportContact URL into a Support Provider Resource URN
+                mySUPPORTURN = self.SUPPORTPROVIDER_URL2URN.get(item['SupportContact'])
+                if mySUPPORTURN:
+                    myNEWRELATIONS[mySUPPORTURN] = 'Supported By'
+            except:
+                continue
 
             if item['InterfaceName'] == 'org.globus.gridftp':
                 Name='GridFTP data transfer endpoint'
@@ -830,7 +841,7 @@ class WarehouseRouter():
             if len(item.get('ScienceGatewayName') or '') > 0:
                 myGatewayID = self.GWPROVIDER_URNMAP.get(item['ScienceGatewayName'])
                 if myGatewayID:
-                    myNEWRELATIONS[myGatewayID] = 'Available Through'
+                    myNEWRELATIONS[myGatewayID] = 'Accessible From'
             if len(item.get('SupportOrganizationGlobalID') or '') > 0:
                 myRelatedID = self.SUPPORTPROVIDER_URNMAP.get(item['SupportOrganizationGlobalID'])
                 if myRelatedID:
@@ -914,9 +925,15 @@ class WarehouseRouter():
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
             if mySiteURN:
-                myNEWRELATIONS[mySiteURN] = 'Operated By'
+                myNEWRELATIONS[mySiteURN] = 'Provided By'
             if myResourceURN:
                 myNEWRELATIONS[myResourceURN] = 'Hosted On'
+            try: # Convert SupportContact URL into a Support Provider Resource URN
+                mySUPPORTURN = self.SUPPORTPROVIDER_URL2URN.get(item['SupportContact'])
+                if mySUPPORTURN:
+                    myNEWRELATIONS[mySUPPORTURN] = 'Supported By'
+            except:
+                continue
             
             try:
                 local = ResourceV3Local(
@@ -1187,13 +1204,12 @@ class WarehouseRouter():
 ########## CUSTOMIZATIONS END ##########
 
 if __name__ == '__main__':
+    router = WarehouseRouter()
     try:
-        router = WarehouseRouter()
         rc = router.run()
+        router.exit(rc)
     except Exception as e:
         msg = '{} Exception: {}'.format(type(e).__name__, e)
         router.logger.error(msg)
         traceback.print_exc(file=sys.stdout)
-        rc = 1
-    router.lock.release()
-    sys.exit(rc)
+        sys.exit(1)
