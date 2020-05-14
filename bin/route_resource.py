@@ -12,8 +12,6 @@
 #   Write_RSP_Support_Providers   -> Organizations:SupportProvider:software.xsede.org
 #   Write_RSP_HPC_Providers       -> Organizations:HPCProviders:software.xsede.org (including XSEDE)
 #
-#
-#
 # Software:OnlineServices:*
 #   Write_RSP_Network_Service     -> Software:OnlineServices:software.xsede.org
 #   Write_Glue2_Network_Service   -> Software:OnlineServices:info.xsede.org:network-service
@@ -604,7 +602,7 @@ class WarehouseRouter():
                             Audience = self.Affiliation,
                      )
                 resource.save()
-                resource.indexing()
+                resource.indexing(myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -690,7 +688,7 @@ class WarehouseRouter():
                             Audience = self.Affiliation,
                      )
                 resource.save()
-                resource.indexing()
+                resource.indexing(myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -799,7 +797,7 @@ class WarehouseRouter():
                             Audience = self.Affiliation,
                      )
                 resource.save()
-                resource.indexing()
+                resource.indexing(myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -833,15 +831,21 @@ class WarehouseRouter():
             if item['AccessType'] != 'Execution Environment':
                 continue
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            myProviderID = self.HPCRESOURCE_URNMAP.get(item['HostingResourceID'].split('.', 1)[1],'')
+                
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
-            myNEWRELATIONS[myProviderID] = 'Hosted On'
+            myHostedID = self.HPCRESOURCE_URNMAP.get(item['HostingResourceID'],'')
+            if myHostedID:
+                myNEWRELATIONS[myHostedID] = 'Hosted On'
+            
             # Set new relations and ProviderID to the GW or the SP if not from GW
             if len(item.get('ScienceGatewayName') or '') > 0:
                 myGatewayID = self.GWPROVIDER_URNMAP.get(item['ScienceGatewayName'])
                 if myGatewayID:
                     myNEWRELATIONS[myGatewayID] = 'Accessible From'
+
+            myProviderID = myGatewayID or self.HPCPROVIDER_URNMAP.get(item['HostingResourceID'].split('.', 1)[1],'')
+            
             if len(item.get('SupportOrganizationGlobalID') or '') > 0:
                 myRelatedID = self.SUPPORTPROVIDER_URNMAP.get(item['SupportOrganizationGlobalID'])
                 if myRelatedID:
@@ -886,7 +890,7 @@ class WarehouseRouter():
                             Audience = self.Affiliation,
                      )
                 resource.save()
-                resource.indexing()
+                resource.indexing(myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -998,7 +1002,7 @@ class WarehouseRouter():
                             Audience = self.Affiliation,
                      )
                 resource.save()
-                resource.indexing()
+                resource.indexing(myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -1072,7 +1076,7 @@ class WarehouseRouter():
                             Audience = self.Affiliation,
                      )
                 resource.save()
-                resource.indexing()
+                resource.indexing(myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
