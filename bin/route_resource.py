@@ -35,6 +35,7 @@ import json
 import logging
 import logging.handlers
 import os
+from pid import PidFile
 import pwd
 import re
 import shutil
@@ -53,8 +54,6 @@ from django.db import DataError, IntegrityError
 from django.forms.models import model_to_dict
 from resource_v3.models import *
 from processing_status.process import ProcessingActivity
-
-from lockfile import pidlockfile
 
 import elasticsearch_dsl.connections
 from elasticsearch import Elasticsearch, RequestsHttpConnection
@@ -143,17 +142,10 @@ class WarehouseRouter():
             sys.exit(1)
         
         if self.config.get('PID_FILE'):
-            pidfile_path =  self.config['PID_FILE']
+            self.pidfile_path =  self.config['PID_FILE']
         else:
             name = os.path.basename(__file__).replace('.py', '')
-            pidfile_path = '/var/run/{}/{}.pid'.format(name, name)
-        self.lock = pidlockfile.PIDLockFile(pidfile_path, timeout=5)
-        try:
-            self.lock.acquire()
-        except:
-            self.logger.error('Failed to acquire PIDLockFile={}'.format(pidfile_path))
-            sys.exit(1)
-
+            self.pidfile_path = '/var/run/{}/{}.pid'.format(name, name)
         signal.signal(signal.SIGINT, self.exit_signal)
         signal.signal(signal.SIGTERM, self.exit_signal)
 
@@ -172,13 +164,11 @@ class WarehouseRouter():
         if configured_database:
             self.logger.info('Warehouse database={}'.format(configured_database))
 
-    def exit_signal(self, my_signal, frame):
-        self.logger.critical('Caught signal={}({}), exiting...'.format(my_signal, signal.Signals(my_signal).name))
-        self.lock.release()
-        sys.exit(1)
+    def exit_signal(self, signum, frame):
+        self.logger.critical('Caught signal={}({}), exiting...'.format(signum, signal.Signals(signum).name))
+        sys.exit(signum)
         
     def exit(self, rc):
-        self.lock.release()
         sys.exit(rc)
 
     def SaveDaemonStdOut(self, path):
@@ -1093,25 +1083,6 @@ class WarehouseRouter():
         self.Log_STEP(me)
         return(0, '')
 
-#    def run_wrapper(self):
-#       Obsolete, systemd daemonizes
-#        self.signal_map = {
-#            signal.SIGINT: self.exit_signal,
-#            signal.SIGTERM: self.exit_signal
-#        }
-#        with daemon.DaemonContext(
-#                detach_process = False,
-#                stdin = sys.stdin,
-#                stdout = sys.stdout,
-#                stderr = sys.stderr,
-#                pidfile = lockfile.FileLock(pidfile_path),
-#                signal_map = self.signal_map,
-#                files_preserve = [self.handler.stream],
-#                working_directory = self.config['RUN_DIR'],
-#        ) as ctx:
-#            rc = self.run()
-#        return(rc)
-
     def run(self):
         # Loading all the Catalog entries for our affiliation
         self.CATALOGS = {}
@@ -1209,11 +1180,12 @@ class WarehouseRouter():
 
 if __name__ == '__main__':
     router = WarehouseRouter()
-    try:
-        rc = router.run()
-        router.exit(rc)
-    except Exception as e:
-        msg = '{} Exception: {}'.format(type(e).__name__, e)
-        router.logger.error(msg)
-        traceback.print_exc(file=sys.stdout)
-        sys.exit(1)
+    with PidFile(router.pidfile_path):
+        try:
+            rc = router.run()
+        except Exception as e:
+            msg = '{} Exception: {}'.format(type(e).__name__, e)
+            router.logger.error(msg)
+            traceback.print_exc(file=sys.stdout)
+            rc = 1
+    router.exit(rc)
