@@ -335,27 +335,29 @@ class Router():
                 self.logger.info('{} deleted ID={}'.format(contype, URN))
                 self.STATS.update({me + '.Delete'})
     #
-    # Update relations and delete relations for myURN that weren't just updated (newURNS)
+    # Update relations and delete relations for myURN that weren't just updated (newIDS)
     #
     def Update_REL(self, myURN, newRELATIONS):
-        newURNS = []
+        newIDS = []
         for relatedID in newRELATIONS:
             try:
-                relationURN = ':'.join([myURN, md5(relatedID.encode('UTF-8')).hexdigest()])
+                relationType = newRELATIONS[relatedID]
+                relationHASH = md5(':'.join([relatedID, relationType]).encode('UTF-8')).hexdigest()
+                relationID = ':'.join([myURN, relationHASH])
                 relation = ResourceV3Relation(
-                            ID = relationURN,
+                            ID = relationID,
                             FirstResourceID = myURN,
                             SecondResourceID = relatedID,
-                            RelationType = newRELATIONS[relatedID],
+                            RelationType = relationType,
                      )
                 relation.save()
             except Exception as e:
-                msg = '{} saving Relation ID={}: {}'.format(type(e).__name__, relationURN, e)
+                msg = '{} saving Relation ID={}: {}'.format(type(e).__name__, relationID, e)
                 self.logger.error(msg)
                 return(False, msg)
-            newURNS.append(relationURN)
+            newIDS.append(relationID)
         try:
-            ResourceV3Relation.objects.filter(FirstResourceID__exact = myURN).exclude(ID__in = newURNS).delete()
+            ResourceV3Relation.objects.filter(FirstResourceID__exact = myURN).exclude(ID__in = newIDS).delete()
         except Exception as e:
             self.logger.error('{} deleting Relations for Resource ID={}: {}'.format(type(e).__name__, myURN, e))
     #
