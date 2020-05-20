@@ -247,12 +247,12 @@ class Router():
         return
 
     def exit_signal(self, signum, frame):
-        self.logger.critical('Caught signal={}({}), exiting with rc={}'.format(signum, signal.Signals(signum).name), signum)
+        self.logger.critical('Caught signal={}({}), exiting with rc={}'.format(signum, signal.Signals(signum).name, signum))
         sys.exit(signum)
         
     def exit(self, rc):
         if rc:
-            self.logger.error('Existing with rc={}'.format(rc))
+            self.logger.error('Exiting with rc={}'.format(rc))
         sys.exit(rc)
 
     def CATALOGURN_to_URL(self, id):
