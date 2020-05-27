@@ -1019,9 +1019,14 @@ class Router():
             try:
                 if item.get('SupportStatus'):
                     if isinstance(item['SupportStatus'], list):
-                        QualityLevel = ','.join(item['SupportStatus']).capitalize()
+                        newlist = list()
+                        for i in item['SupportStatus']:
+                            newlist.append('Pre-producton' if i.lower() == 'preliminary' else i.capitalize())
+                        QualityLevel = ','.join(newlist)
                     else:
                         QualityLevel = item.get('SupportStatus').capitalize()
+                        if QualityLevel.lower() == 'preliminary':
+                            QualityLevel = 'Pre-production'
                 else:
                     QualityLevel = 'Production'
                 Description = item['Description'] or item['AppName']
