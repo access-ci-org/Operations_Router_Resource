@@ -319,7 +319,7 @@ class Router():
     #
     # Delete old items (those in 'cur') that weren't updated (those in 'new')
     #
-    def Delete_OLD(self, contype, cur, new):
+    def Delete_OLD(self, me, cur, new):
         for URN in [id for id in cur if id not in new]:
             try:
                 ResourceV3Index.get(id = URN).delete()
@@ -332,7 +332,7 @@ class Router():
             except Exception as e:
                 self.logger.error('{} deleting ID={}: {}'.format(type(e).__name__, URN, e))
             else:
-                self.logger.info('{} deleted ID={}'.format(contype, URN))
+                self.logger.info('{} deleted ID={}'.format(me, URN))
                 self.STATS.update({me + '.Delete'})
     #
     # Update relations and delete relations for myURN that weren't just updated (newIDS)
