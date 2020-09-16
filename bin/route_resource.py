@@ -168,7 +168,6 @@ class Router():
         self.memory = {}                        # Used to put information in "memory"
         self.Affiliation = 'xsede.org'
         self.DefaultValidity = timedelta(days = 14)
-        self.URNPrefix = 'urn:ogf:glue2:'
         self.memory['gateway_urnmap'] = {}       # Mapping of Gateway Name to its GLOBALURN
         self.GWPROVIDER_URNMAP = self.memory['gateway_urnmap']
         self.memory['support_urnmap'] = {}       # Mapping of Support GlobalID to its GLOBALURN
@@ -612,12 +611,9 @@ class Router():
             self.HPCRESOURCE_INFO[item['ResourceID']] = item
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
-            siteURN = self.HPCPROVIDER_URNMAP.get(item.get('SiteID', ''), None)
-            if siteURN:
-                myProviderID = self.HPCPROVIDER_URNMAP.get(item['SiteID'])
-                myNEWRELATIONS[siteURN] = 'Provided By'
-            else:
-                myProviderID = None
+            providerURN = self.HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
+            if providerURN:
+                myNEWRELATIONS[providerURN] = 'Provided By'
             try:
                 local = ResourceV3Local(
                             ID = myGLOBALURN,
@@ -649,7 +645,7 @@ class Router():
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
-                            ProviderID = myProviderID,
+                            ProviderID = providerURN,
                             Description = None,
                             Topics = 'HPC',
                             Keywords = Keywords,
@@ -700,7 +696,9 @@ class Router():
             resourceURN = self.HPCRESOURCE_URNMAP.get(item.get('HostingResourceID', ''), None)
             supportURN = self.SUPPORTPROVIDER_URNMAP.get(item.get('SupportOrganizationGlobalID', ''), None)
             # Set ProviderID to the GW or the SP
-            myProviderID = gatewayURN or siteURN or None
+            providerURN = gatewayURN or siteURN or None
+            if providerURN:
+                myNEWRELATIONS[providerURN] = 'Provided By'
             if gatewayURN:
                 myNEWRELATIONS[gatewayURN] = 'Gateway Integrated'
             if resourceURN:
@@ -736,7 +734,7 @@ class Router():
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = item['Description'],
-                            ProviderID = myProviderID,
+                            ProviderID = providerURN,
                             Description = None,
                             Topics = None,
                             Keywords = item['Keywords'],
@@ -777,12 +775,12 @@ class Router():
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
             mySiteID = self.HPCRESOURCE_INFO.get(item['ResourceID'])['SiteID']
-            mySiteURN = self.HPCPROVIDER_URNMAP[mySiteID]
+            providerURN = self.HPCPROVIDER_URNMAP[mySiteID]
             myResourceURN = self.HPCRESOURCE_URNMAP.get(item['ResourceID'])
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
-            if mySiteURN:
-                myNEWRELATIONS[mySiteURN] = 'Provided By'
+            if providerURN:
+                myNEWRELATIONS[providerURN] = 'Provided By'
             if myResourceURN:
                 myNEWRELATIONS[myResourceURN] = 'Hosted On'
             try: # Convert SupportContact URL into a Support Provider Resource URN
@@ -846,7 +844,7 @@ class Router():
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = Description,
-                            ProviderID = mySiteURN,
+                            ProviderID = providerURN,
                             Description = LongDescription,
                             Topics = item['ServiceType'],
                             Keywords = Keywords,
@@ -901,7 +899,9 @@ class Router():
                 if myGatewayID:
                     myNEWRELATIONS[myGatewayID] = 'Accessible From'
 
-            myProviderID = myGatewayID or self.HPCPROVIDER_URNMAP.get(item['HostingResourceID'].split('.', 1)[1],'')
+            providerURN = myGatewayID or self.HPCPROVIDER_URNMAP.get(item['HostingResourceID'].split('.', 1)[1],'')
+            if providerURN:
+                myNEWRELATIONS[providerURN] = 'Provided By'
             
             if len(item.get('SupportOrganizationGlobalID') or '') > 0:
                 myRelatedID = self.SUPPORTPROVIDER_URNMAP.get(item['SupportOrganizationGlobalID'])
@@ -940,7 +940,7 @@ class Router():
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
-                            ProviderID = myProviderID,
+                            ProviderID = providerURN,
                             Description = item['Description'],
                             Topics = None,
                             Keywords = item['Keywords'],
@@ -980,14 +980,12 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
-            myProviderID = self.HPCPROVIDER_URNMAP.get(item['SiteID'])
-            mySiteID = item.get('SiteID')
-            mySiteURN = self.HPCPROVIDER_URNMAP.get(mySiteID)
+            providerURN = self.HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
             myResourceURN = self.HPCRESOURCE_URNMAP.get(item['ResourceID'])
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
-            if mySiteURN:
-                myNEWRELATIONS[mySiteURN] = 'Provided By'
+            if providerURN:
+                myNEWRELATIONS[providerURN] = 'Provided By'
             if myResourceURN:
                 myNEWRELATIONS[myResourceURN] = 'Hosted On'
             try: # Convert SupportContact URL into a Support Provider Resource URN
@@ -1058,7 +1056,7 @@ class Router():
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = Description,
-                            ProviderID = myProviderID,
+                            ProviderID = providerURN,
                             Description = LongDescription,
                             Topics = Domain,
                             Keywords = Keywords,
@@ -1097,7 +1095,7 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            myProviderID = None
+            providerURN = None
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
             supportURN = self.SUPPORTPROVIDER_URNMAP.get(item.get('SupportOrganizationGlobalID', ''), None)
@@ -1133,7 +1131,7 @@ class Router():
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = item['Title'],
-                            ProviderID = myProviderID,
+                            ProviderID = providerURN,
                             Description = item['Description'],
                             Topics = None,
                             Keywords = item['Keywords'],
