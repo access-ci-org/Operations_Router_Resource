@@ -793,8 +793,11 @@ class Router():
             siteURN = self.HPCPROVIDER_URNMAP.get(item.get('SiteID', ''), None)
             resourceURN = self.HPCRESOURCE_URNMAP.get(item.get('HostingResourceID', ''), None)
             supportURN = self.SUPPORTPROVIDER_URNMAP.get(item.get('SupportOrganizationGlobalID', ''), None)
-            # Set ProviderID to the GW or the SP
-            providerURN = gatewayURN or siteURN or None
+
+            providerURNxsede = self.HPCPROVIDER_URNMAP.get('xsede.org', None) \
+                if item.get('SupportOrganizationGlobalID', '') == 'helpdesk.xsede.org' else None
+            # ProviderID priority order of Gateway, (SP) Site, or XSEDE (if supported by XSEDE)
+            providerURN = gatewayURN or siteURN or providerURNxsede
             if providerURN:
                 myNEWRELATIONS[providerURN] = 'Provided By'
             if gatewayURN:
