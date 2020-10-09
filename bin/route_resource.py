@@ -1,29 +1,37 @@
 #!/usr/bin/env python3
 #
-# Router to synchronize RSP and Glue2 informaton into the Warehouse Resource tables
+# Router to synchronize RSP, GLUE2, and RDR informaton into the Warehouse Resource tables
 #
 # Author: JP Navarro, March 2020
+#         Jonathan Kim, October 2020
 #
 # Resource Group:Type
-#   Function                      -> Extended Prefix
+#   Function
 # -------------------------------------------------------------------------------------------------
 # Organizations:*
-#   Write_RSP_Gateway_Providers   -> Organizations:OnlineService:software.xsede.org:gateways
-#   Write_RSP_Support_Providers   -> Organizations:SupportProvider:software.xsede.org
-#   Write_RSP_HPC_Providers       -> Organizations:HPCProviders:software.xsede.org (including XSEDE)
+#   Write_RSP_Gateway_Providers
+#   Write_RSP_Support_Providers
+#   Write_RSP_HPC_Providers          -> (including XSEDE)
+#   Write_RDR_Providers_subcall
 #
-# Software:OnlineServices:*
-#   Write_RSP_Network_Service     -> Software:OnlineServices:software.xsede.org
-#   Write_Glue2_Network_Service   -> Software:OnlineServices:info.xsede.org:network-service
-#       from glue2.{AbstractService, Endpoint}
+# Computing Tools and Services:*
+#   Write_RSP_HPC_Resources
+#   Write_RDR_BaseResources_subcall
+#   Write_RDR_SubResources_subcall
 #
-# Software:Executable:*
-#   Write_RSP_Executable_Software -> Software:ExecutableSoftware:software.xsede.org
-#   Write_Glue2_Executable_Software -> Software:ExecutableSoftware:info.xsede.org
-#       from glue2.{ApplicationEnvironment, ApplicationHandle}
+# Software:Vendor Software
+#   Write_RSP_Vendor_Software
 #
-# Software:Packaged
-#   Write_RSP_Packaged_Software   -> Software:PackagedSoftware:sofware.xsede.org
+# Software:Online Service
+#   Write_RSP_Network_Service
+#   Write_Glue2_Network_Service      -> from glue2.{AbstractService, Endpoint}
+#
+# Software:Executable Software
+#   Write_RSP_Executable_Software
+#   Write_Glue2_Executable_Software  ->from glue2.{ApplicationEnvironment, ApplicationHandle}
+#
+# Software:Packaged Software
+#   Write_RSP_Packaged_Software
 #
 import argparse
 from collections import Counter
@@ -168,7 +176,6 @@ class Router():
         self.memory = {}                        # Used to put information in "memory"
         self.Affiliation = 'xsede.org'
         self.DefaultValidity = timedelta(days = 14)
-        self.URNPrefix = 'urn:ogf:glue2:'
         self.memory['gateway_urnmap'] = {}       # Mapping of Gateway Name to its GLOBALURN
         self.GWPROVIDER_URNMAP = self.memory['gateway_urnmap']
         self.memory['support_urnmap'] = {}       # Mapping of Support GlobalID to its GLOBALURN
@@ -272,7 +279,7 @@ class Router():
     def Get_HTTP(self, url, contype):
         headers = {}
         # different headers for RDR site 
-        if (contype == 'Resource Description Site Information'):
+        if 'https://rdr.xsede.org' in url:
             headers = {'Content-type': 'application/json',
                         'XA-CLIENT': 'XSEDE',
                         'XA-KEY-FORMAT': 'underscore'}
@@ -345,7 +352,7 @@ class Router():
             else:
                 self.logger.info('{} deleted ID={}'.format(me, URN))
                 self.STATS.update({me + '.Delete'})
-            
+
     #
     # Update relations and delete relations for myURN that weren't just updated (newIDS)
     #
@@ -624,12 +631,9 @@ class Router():
             self.HPCRESOURCE_INFO[item['ResourceID']] = item
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
-            siteURN = self.HPCPROVIDER_URNMAP.get(item.get('SiteID', ''), None)
-            if siteURN:
-                myProviderID = self.HPCPROVIDER_URNMAP.get(item['SiteID'])
-                myNEWRELATIONS[siteURN] = 'Provided By'
-            else:
-                myProviderID = None
+            providerURN = self.HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
+            if providerURN:
+                myNEWRELATIONS[providerURN] = 'Provided By'
             try:
                 local = ResourceV3Local(
                             ID = myGLOBALURN,
@@ -661,7 +665,7 @@ class Router():
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
-                            ProviderID = myProviderID,
+                            ProviderID = providerURN,
                             Description = None,
                             Topics = 'HPC',
                             Keywords = Keywords,
@@ -669,7 +673,7 @@ class Router():
                      )
                 resource.save()
                 if self.ESEARCH:
-                    resource.indexing(myNEWRELATIONS)
+                    resource.indexing(relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -680,6 +684,103 @@ class Router():
             self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
             self.STATS.update({me + '.Update'})
 
+        self.Delete_OLD(me, cur, new)
+
+        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
+        self.Log_STEP(me)
+        return(0, '')
+
+    ####################################
+    def Write_RSP_Vendor_Software(self, content, contype, config):
+        start_utc = datetime.now(timezone.utc)
+        myRESGROUP = 'Software'
+        myRESTYPE = 'Vendor Software'
+        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
+        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
+
+        cur = {}     # Current items
+        new = {}     # New items
+        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
+            cur[item.ID] = item
+
+        for item in content[contype]:
+            myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
+            # The new relations for this item, key=related ID, value=type of relation
+            myNEWRELATIONS = {}
+            # Items can have a related ProviderID (Vendor), SupportOrganizationGlobalID, ParentComponentID (Element)
+            # Set relations: Provided By (Vendor), Supported By, Element Of (Parent)
+            if item.get('ParentNodeid'):
+                parentURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['ParentNodeid'])
+                myNEWRELATIONS[parentURN] = 'Component Of'
+            supportURN = None
+            providerURN = None
+            if item.get('Vendor') == 'Globus':
+                supportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1565'
+            elif item.get('Vendor') == 'XSEDE':
+                supportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1553'
+                providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:hpc.providers:drupalnodeid:2943'
+            elif item.get('Vendor') == 'NCSA':
+                supportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1553'
+                providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:hpc.providers:drupalnodeid:3671'
+            if supportURN:
+                myNEWRELATIONS[supportURN] = 'Supported By'
+            if providerURN:
+                myNEWRELATIONS[providerURN] = 'Provided By'
+                
+            try:
+                local = ResourceV3Local(
+                            ID = myGLOBALURN,
+                            CreationTime = datetime.now(timezone.utc),
+                            Validity = self.DefaultValidity,
+                            Affiliation = self.Affiliation,
+                            LocalID = item['DrupalNodeid'],
+                            LocalType = config['LOCALTYPE'],
+                            LocalURL = item.get('DrupalUrl', config.get('SOURCEDEFAULTURL', None)),
+                            CatalogMetaURL = self.CATALOGURN_to_URL(config['CATALOGURN']),
+                            EntityJSON = item,
+                        )
+                local.save()
+            except Exception as e:
+                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                self.logger.error(msg)
+                return(False, msg)
+            new[myGLOBALURN] = local
+                
+            try:
+                LongDescription = item.get('Description')
+                if item.get('VendorSoftwareURL'):
+                    LongDescription += '\nVendor Software URL: ' + item.get('VendorSoftwareURL')
+                if item.get('RelatedDiscussionForums'):
+                    LongDescription += '\nRelated Discussion Forum: ' + item.get('RelatedDiscussionForums')
+                Description = LongDescription[:1200]
+                resource = ResourceV3(
+                            ID = myGLOBALURN,
+                            Affiliation = self.Affiliation,
+                            LocalID = item['DrupalNodeid'],
+                            QualityLevel = 'Production',
+                            Name = item['CommonName'],
+                            ResourceGroup = myRESGROUP,
+                            Type = myRESTYPE,
+                            ShortDescription = Description,
+                            ProviderID = providerURN,
+                            Description = LongDescription,
+                            Topics = None,
+                            Keywords = item['Tags'],
+                            Audience = self.Affiliation,
+                     )
+                resource.save()
+                if self.ESEARCH:
+                    resource.indexing(relations=myNEWRELATIONS)
+            except Exception as e:
+                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                self.logger.error(msg)
+                return(False, msg)
+
+            self.Update_REL(myGLOBALURN, myNEWRELATIONS)
+
+            self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
+            self.STATS.update({me + '.Update'})
+ 
         self.Delete_OLD(me, cur, new)
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
@@ -711,8 +812,13 @@ class Router():
             siteURN = self.HPCPROVIDER_URNMAP.get(item.get('SiteID', ''), None)
             resourceURN = self.HPCRESOURCE_URNMAP.get(item.get('HostingResourceID', ''), None)
             supportURN = self.SUPPORTPROVIDER_URNMAP.get(item.get('SupportOrganizationGlobalID', ''), None)
-            # Set ProviderID to the GW or the SP
-            myProviderID = gatewayURN or siteURN or None
+
+            providerURNxsede = self.HPCPROVIDER_URNMAP.get('xsede.org', None) \
+                if item.get('SupportOrganizationGlobalID', '') == 'helpdesk.xsede.org' else None
+            # ProviderID priority order of Gateway, (SP) Site, or XSEDE (if supported by XSEDE)
+            providerURN = gatewayURN or siteURN or providerURNxsede
+            if providerURN:
+                myNEWRELATIONS[providerURN] = 'Provided By'
             if gatewayURN:
                 myNEWRELATIONS[gatewayURN] = 'Gateway Integrated'
             if resourceURN:
@@ -743,12 +849,12 @@ class Router():
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
                             LocalID = item['DrupalNodeid'],
-                            QualityLevel = item.get('ServingState', 'Producton').capitalize(),
+                            QualityLevel = item.get('ServingState', 'Production').capitalize(),
                             Name = item['Title'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = item['Description'],
-                            ProviderID = myProviderID,
+                            ProviderID = providerURN,
                             Description = None,
                             Topics = None,
                             Keywords = item['Keywords'],
@@ -756,7 +862,7 @@ class Router():
                      )
                 resource.save()
                 if self.ESEARCH:
-                    resource.indexing(myNEWRELATIONS)
+                    resource.indexing(relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -789,12 +895,12 @@ class Router():
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
             mySiteID = self.HPCRESOURCE_INFO.get(item['ResourceID'])['SiteID']
-            mySiteURN = self.HPCPROVIDER_URNMAP[mySiteID]
+            providerURN = self.HPCPROVIDER_URNMAP[mySiteID]
             myResourceURN = self.HPCRESOURCE_URNMAP.get(item['ResourceID'])
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
-            if mySiteURN:
-                myNEWRELATIONS[mySiteURN] = 'Provided By'
+            if providerURN:
+                myNEWRELATIONS[providerURN] = 'Provided By'
             if myResourceURN:
                 myNEWRELATIONS[myResourceURN] = 'Hosted On'
             try: # Convert SupportContact URL into a Support Provider Resource URN
@@ -853,12 +959,12 @@ class Router():
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
                             LocalID = item['ID'],
-                            QualityLevel = item.get('ServingState', 'Producton').capitalize(),
+                            QualityLevel = item.get('ServingState', 'Production').capitalize(),
                             Name = Name,
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = Description,
-                            ProviderID = mySiteURN,
+                            ProviderID = providerURN,
                             Description = LongDescription,
                             Topics = item['ServiceType'],
                             Keywords = Keywords,
@@ -866,7 +972,7 @@ class Router():
                      )
                 resource.save()
                 if self.ESEARCH:
-                    resource.indexing(myNEWRELATIONS)
+                    resource.indexing(relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -913,7 +1019,9 @@ class Router():
                 if myGatewayID:
                     myNEWRELATIONS[myGatewayID] = 'Accessible From'
 
-            myProviderID = myGatewayID or self.HPCPROVIDER_URNMAP.get(item['HostingResourceID'].split('.', 1)[1],'')
+            providerURN = myGatewayID or self.HPCPROVIDER_URNMAP.get(item['HostingResourceID'].split('.', 1)[1],'')
+            if providerURN:
+                myNEWRELATIONS[providerURN] = 'Provided By'
             
             if len(item.get('SupportOrganizationGlobalID') or '') > 0:
                 myRelatedID = self.SUPPORTPROVIDER_URNMAP.get(item['SupportOrganizationGlobalID'])
@@ -947,12 +1055,12 @@ class Router():
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
                             LocalID = item['DrupalNodeid'],
-                            QualityLevel = item.get('ServingState', 'Producton').capitalize(),
+                            QualityLevel = item.get('ServingState', 'Production').capitalize(),
                             Name = item['Title'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
-                            ProviderID = myProviderID,
+                            ProviderID = providerURN,
                             Description = item['Description'],
                             Topics = None,
                             Keywords = item['Keywords'],
@@ -960,7 +1068,7 @@ class Router():
                      )
                 resource.save()
                 if self.ESEARCH:
-                    resource.indexing(myNEWRELATIONS)
+                    resource.indexing(relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -992,14 +1100,12 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
-            myProviderID = self.HPCPROVIDER_URNMAP.get(item['SiteID'])
-            mySiteID = item.get('SiteID')
-            mySiteURN = self.HPCPROVIDER_URNMAP.get(mySiteID)
+            providerURN = self.HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
             myResourceURN = self.HPCRESOURCE_URNMAP.get(item['ResourceID'])
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
-            if mySiteURN:
-                myNEWRELATIONS[mySiteURN] = 'Provided By'
+            if providerURN:
+                myNEWRELATIONS[providerURN] = 'Provided By'
             if myResourceURN:
                 myNEWRELATIONS[myResourceURN] = 'Hosted On'
             try: # Convert SupportContact URL into a Support Provider Resource URN
@@ -1070,7 +1176,7 @@ class Router():
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = Description,
-                            ProviderID = myProviderID,
+                            ProviderID = providerURN,
                             Description = LongDescription,
                             Topics = Domain,
                             Keywords = Keywords,
@@ -1078,7 +1184,7 @@ class Router():
                      )
                 resource.save()
                 if self.ESEARCH:
-                    resource.indexing(myNEWRELATIONS)
+                    resource.indexing(relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -1109,10 +1215,15 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            myProviderID = None
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
-            supportURN = self.SUPPORTPROVIDER_URNMAP.get(item.get('SupportOrganizationGlobalID', ''), None)
+            mySupportOrgID = item.get('SupportOrganizationGlobalID','')
+            if mySupportOrgID == 'helpdesk.xsede.org':
+                providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:hpc.providers:drupalnodeid:2943'
+                myNEWRELATIONS[providerURN] = 'Provided By'
+            else: # TODO: Handle other Support Orgs
+                providerURN = None
+            supportURN = self.SUPPORTPROVIDER_URNMAP.get(mySupportOrgID, None)
             if supportURN:
                 myNEWRELATIONS[supportURN] = 'Supported By'
 
@@ -1140,12 +1251,12 @@ class Router():
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
                             LocalID = item['DrupalNodeid'],
-                            QualityLevel = item.get('DeclaredStatus', 'Producton').capitalize(),
+                            QualityLevel = item.get('DeclaredStatus', 'Production').capitalize(),
                             Name = item['VendorSoftwareCommonName'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = item['Title'],
-                            ProviderID = myProviderID,
+                            ProviderID = providerURN,
                             Description = item['Description'],
                             Topics = None,
                             Keywords = item['Keywords'],
@@ -1153,7 +1264,7 @@ class Router():
                      )
                 resource.save()
                 if self.ESEARCH:
-                    resource.indexing(myNEWRELATIONS)
+                    resource.indexing(relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
