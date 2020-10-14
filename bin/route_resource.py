@@ -1289,8 +1289,8 @@ class Router():
     #
     def Write_RDR_Providers_subcall(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
-        myRESGROUP = 'Computing Tools and Services'
-        myRESTYPE = 'Research Computing'
+        myRESGROUP = 'Organizations'
+        myRESTYPE = 'Provider'
         me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
         self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
         localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/organizations/' 
