@@ -279,7 +279,7 @@ class Router():
     def Get_HTTP(self, url, contype):
         headers = {}
         # different headers for RDR site 
-        if 'https://rdr.xsede.org' in url:
+        if 'rdr.xsede.org' == url.hostname:
             headers = {'Content-type': 'application/json',
                         'XA-CLIENT': 'XSEDE',
                         'XA-KEY-FORMAT': 'underscore'}
@@ -1445,7 +1445,7 @@ class Router():
             if not item['current_statuses']:  # empty cases
                     qualityLevel='Retired'
             if 'decommissioned' in item['current_statuses']:
-                qualityLevel = 'Retire'
+                qualityLevel = 'Retired'
             elif set(['friendly', 'production', 'post-production']) & set(item['current_statuses']):
                 qualityLevel = 'Production'
             elif 'pre-production' in item['current_statuses']:
@@ -1454,7 +1454,7 @@ class Router():
                 qualityLevel = 'Retired'
 
             # For Keywords, get comma seperated org-abbrev for multiple orgs.
-            # For ShortDescription, get 'and the' seperated org-name for multiple orgs.
+            # For ShortDescription, get comma seperated org-name for multiple orgs.
             orgKeywords=''
             orgNames=''
             for orgs in item['organizations']:
@@ -1463,7 +1463,7 @@ class Router():
                 orgKeywords += orgs['organization_abbreviation']
                 if orgNames:
                     # replace is needed, otherwise incorrect
-                    orgNames = orgNames.replace('\n', '') + ' and the '
+                    orgNames = orgNames.replace('\n', '') + ', '
                 orgNames += orgs['organization_name']
             
             # For ShortDescription 
@@ -1527,7 +1527,7 @@ class Router():
         for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=URNPREFIX_SUB):
             cur[item.ID] = item
 
-        subNameList=['compute_resources', 'storage_resources', 'other_resources', 'gird_resources']
+        subNameList=['compute_resources', 'storage_resources', 'other_resources', 'grid_resources']
         for item in content[contype]['resources'] :
             # iterate different types of sub-resource
             for subName in subNameList:
@@ -1553,8 +1553,8 @@ class Router():
                             subID =  str(sub['other_resource_id'])
                             localType = 'otherResource'
                             topics = 'HPC'  # no adding ', Other' for this
-                        elif subName == 'gird_resources':
-                            subID = str(sub['gird_resource_id'])
+                        elif subName == 'grid_resources':
+                            subID = str(sub['grid_resource_id'])
                             localType = 'gridResource'
                             topics = 'HPC, Grid'
                         
@@ -1620,7 +1620,7 @@ class Router():
                         if not sub['current_statuses']:  # empty cases
                                 qualityLevel='Retired'
                         if 'decommissioned' in sub['current_statuses']:
-                            qualityLevel = 'Retire'
+                            qualityLevel = 'Retired'
                         elif set(['friendly', 'production', 'post-production']) & set(sub['current_statuses']):
                             qualityLevel = 'Production'
                         elif 'pre-production' in sub['current_statuses']:
@@ -1629,7 +1629,7 @@ class Router():
                             qualityLevel = 'Retired'
 
                         # For Keywords, get comma seperated org-abbrev for multiple orgs.
-                        # For ShortDescription, get 'and the' seperated org-name for multiple orgs.
+                        # For ShortDescription, get comma seperated org-name for multiple orgs.
                         orgKeywords=''
                         orgNames=''
                         for orgs in item['organizations']:
@@ -1637,7 +1637,7 @@ class Router():
                                 orgKeywords += ', '
                             orgKeywords += orgs['organization_abbreviation']
                             if orgNames:
-                                orgNames = orgNames.replace('\n', '') + ' and the '
+                                orgNames = orgNames.replace('\n', '') + ', '
                             orgNames += orgs['organization_name']
                         
                         # For ShortDescription
