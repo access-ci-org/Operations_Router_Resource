@@ -1410,8 +1410,7 @@ class Router():
                         myProviderID = self.RDRPROVIDER_URNMAP.get(orgs['organization_id'])
                     # set relation with organizations
                     myNEWRELATIONS[orgURN] = 'Provided By'
-                else:
-                    myProviderID = None
+
             # set relation with "XSEDE support org"
             supportURN = self.SUPPORTPROVIDER_URNMAP.get('helpdesk.xsede.org', None)
             if supportURN:
@@ -1579,8 +1578,7 @@ class Router():
                                     myProviderID = self.RDRPROVIDER_URNMAP.get(orgs['organization_id'])
                                 # set relation with organizations
                                 myNEWRELATIONS[orgURN] = 'Provided By'
-                            else:
-                                myProviderID = None
+
                         # set relation with base-resource
                         baseURN = self.RDRRESOURCE_BASE_URNMAP.get(item.get('resource_id', ''), None)
                         if baseURN:
