@@ -1307,6 +1307,10 @@ class Router():
             # Support multiple organiztion cases 
             for orgs in item['organizations']:
                 myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'organization', str(orgs['organization_id']))
+                # Skip if this org already processed
+                if myGLOBALURN == self.RDRPROVIDER_URNMAP.get(orgs['organization_id']):
+                    continue
+
                 # This will be used when resource data is loading for relationship connections
                 self.RDRPROVIDER_URNMAP[orgs['organization_id']] = myGLOBALURN
 
