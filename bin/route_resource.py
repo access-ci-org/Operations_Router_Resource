@@ -12,12 +12,12 @@
 #   Write_RSP_Gateway_Providers
 #   Write_RSP_Support_Providers
 #   Write_RSP_HPC_Providers          -> (including XSEDE)
-#   Write_RDR_Providers_subcall
+#   Write_RDR_Providers
 #
 # Computing Tools and Services:*
 #   Write_RSP_HPC_Resources
-#   Write_RDR_BaseResources_subcall
-#   Write_RDR_SubResources_subcall
+#   Write_RDR_BaseResources
+#   Write_RDR_SubResources
 #
 # Software:Vendor Software
 #   Write_RSP_Vendor_Software
@@ -1287,7 +1287,7 @@ class Router():
     # Load RDR's organization data to ResourceV3 tables (local, standard)
     # This function populates self.RDRPROVIDER_URNMAP
     #
-    def Write_RDR_Providers_subcall(self, content, contype, config):
+    def Write_RDR_Providers(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
         myRESGROUP = 'Organizations'
         myRESTYPE = 'Provider'
@@ -1377,7 +1377,7 @@ class Router():
     # Load RDR's base-resource data to ResourceV3 tables (local, standard, relation)
     # This function populates self.RDRRESOURCE_BASE_URNMAP
     #
-    def Write_RDR_BaseResources_subcall(self, content, contype, config):
+    def Write_RDR_BaseResources(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
         myRESGROUP = 'Computing Tools and Services'
         myRESTYPE = 'Research Computing'
@@ -1515,7 +1515,7 @@ class Router():
     # Load RDR's sub-resource data to ResourceV3 tables (local, standard, relation)
     # This function populates self.RDRRESOURCE_SUB_URNMAP
     #
-    def Write_RDR_SubResources_subcall(self, content, contype, config):
+    def Write_RDR_SubResources(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
         myRESGROUP = 'Computing Tools and Services'
         myRESTYPE = 'Research Computing'
