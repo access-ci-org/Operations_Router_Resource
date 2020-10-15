@@ -1283,7 +1283,7 @@ class Router():
 
 
     #####################################################################
-    # Sub function called from Write_RDR_Main
+    # Function for loading RDR (Resource Description Repository) data
     # Load RDR's organization data to ResourceV3 tables (local, standard)
     # This function populates self.RDRPROVIDER_URNMAP
     #
@@ -1299,14 +1299,14 @@ class Router():
         cur = {}   # Current items
         new = {}   # New items
         # get existing organization data from local table
-        URNPREFIX_ORG = config['URNPREFIX'] + 'organization'
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=URNPREFIX_ORG):
+        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
             cur[item.ID] = item
 
         for item in content[contype]['resources'] :
             # Support multiple organiztion cases 
             for orgs in item['organizations']:
-                myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'organization', str(orgs['organization_id']))
+                myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(orgs['organization_id']))
+
                 # Skip if this org already processed
                 if myGLOBALURN == self.RDRPROVIDER_URNMAP.get(orgs['organization_id']):
                     continue
@@ -1373,7 +1373,7 @@ class Router():
         return(0, '')
 
     #################################################################################
-    # Sub function called from Write_RDR_Main
+    # Function for loading RDR (Resource Description Repository) data
     # Load RDR's base-resource data to ResourceV3 tables (local, standard, relation)
     # This function populates self.RDRRESOURCE_BASE_URNMAP
     #
@@ -1388,13 +1388,12 @@ class Router():
         cur = {}   # Current items
         new = {}   # New items
         # get existing base resource data from local table
-        URNPREFIX_BASE = config['URNPREFIX'] + 'resource.base'
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=URNPREFIX_BASE):
+        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
             cur[item.ID] = item
         
         for item in content[contype]['resources'] :
-            myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'resource.base', str(item['resource_id']))
-            
+            myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(item['resource_id']))
+
             # --------------------------------------------
             # prepare for ResourceV3 (relation) table
             # update occurs later
@@ -1512,7 +1511,7 @@ class Router():
 
 
     ################################################################################
-    # Sub function called from Write_RDR_Main
+    # Function for loading RDR (Resource Description Repository) data
     # Load RDR's sub-resource data to ResourceV3 tables (local, standard, relation)
     # This function populates self.RDRRESOURCE_SUB_URNMAP
     #
@@ -1526,8 +1525,7 @@ class Router():
         cur = {}   # Current items
         new = {}   # New items
         # get existing sub resource data from local table
-        URNPREFIX_SUB = config['URNPREFIX'] + 'resource.sub'
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=URNPREFIX_SUB):
+        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
             cur[item.ID] = item
 
         subNameList=['compute_resources', 'storage_resources', 'other_resources', 'grid_resources']
@@ -1560,8 +1558,8 @@ class Router():
                             subID = str(sub['grid_resource_id'])
                             localType = 'gridResource'
                             topics = 'HPC, Grid'
-                        
-                        myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'resource.sub', subID)
+
+                        myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], subID)
 
                         # --------------------------------------------
                         # prepare for ResourceV3 (relation) table
@@ -1681,15 +1679,6 @@ class Router():
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
         self.Log_STEP(me)
-        return(0, '')
-
-    #######################################################################
-    # Main function for loading RDR (Resource Description Repository) data
-    # to Resource V3 tables (local, standard and relation)
-    def Write_RDR_Main(self, content, contype, config): 
-        self.Write_RDR_Providers_subcall(content, contype, config)
-        self.Write_RDR_BaseResources_subcall(content, contype, config)
-        self.Write_RDR_SubResources_subcall(content, contype, config)
         return(0, '')
 
 
