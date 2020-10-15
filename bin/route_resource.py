@@ -201,6 +201,9 @@ class Router():
         self.WAREHOUSE_API_VERSION = 'v3'
         self.WAREHOUSE_CATALOG = 'ResourceV3'
 
+        # Used in Get_HTTP as memory cache for contents
+        self.HTTP_CACHE = {}
+
         # Loading all the Catalog entries for our affiliation
         self.CATALOGS = {}
         for cat in ResourceV3Catalog.objects.filter(Affiliation__exact=self.Affiliation):
@@ -277,6 +280,11 @@ class Router():
         return(':'.join(newargs))
 
     def Get_HTTP(self, url, contype):
+        # return previously saved data if the source is the same 
+        data_cache_key = contype + ':' + url.geturl()
+        if data_cache_key in self.HTTP_CACHE:
+            return({contype: self.HTTP_CACHE[data_cache_key]})
+
         headers = {}
         # different headers for RDR site 
         if 'rdr.xsede.org' == url.hostname:
@@ -297,6 +305,8 @@ class Router():
             self.logger.error('Response not in expected JSON format ({})'.format(e))
             return(None)
         else:
+            # save retrieved content to the HTTP_CACHE to reuse from memory
+            self.HTTP_CACHE[data_cache_key] = content
             return({contype: content})
 
     def Analyze_CONTENT(self, content):
