@@ -16,7 +16,7 @@
 #   Write_RSP_Vendor_Software
 #
 # Software:Online Service
-#   Write_RSP_Network_Service
+#   Write_RSP_Network_Service        -> from RSP Operational Software
 #   Write_Glue2_Network_Service      -> from glue2.{AbstractService, Endpoint}
 #
 # Software:Executable Software
@@ -334,6 +334,7 @@ class Router():
             else:
                 self.logger.info('{} deleted ID={}'.format(me, URN))
                 self.STATS.update({me + '.Delete'})
+
     #
     # Update relations and delete relations for myURN that weren't just updated (newIDS)
     #
