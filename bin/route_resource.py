@@ -23,7 +23,7 @@
 #   Write_RSP_Vendor_Software
 #
 # Software:Online Service
-#   Write_RSP_Network_Service
+#   Write_RSP_Network_Service        -> from RSP Operational Software
 #   Write_Glue2_Network_Service      -> from glue2.{AbstractService, Endpoint}
 #
 # Software:Executable Software
@@ -35,7 +35,6 @@
 #
 import argparse
 from collections import Counter
-#import datetime
 from datetime import datetime, timezone, timedelta
 from hashlib import md5
 import http.client as httplib
@@ -904,6 +903,11 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
+            if not self.HPCRESOURCE_INFO.get(item['ResourceID']):
+                msg = 'Undefined ResourceID={} in Local ID={}'.format(item['ResourceID'], myGLOBALURN)
+                self.logger.error(msg)
+                break
+                
             mySiteID = self.HPCRESOURCE_INFO.get(item['ResourceID'])['SiteID']
             providerURN = self.HPCPROVIDER_URNMAP[mySiteID]
             myResourceURN = self.HPCRESOURCE_URNMAP.get(item['ResourceID'])
@@ -959,10 +963,10 @@ class Router():
                 
             try:
                 LongDescription = Description
-                if item.get('AppVersion', '') != '':
-                    LongDescription += ' Version {}'.format(item['InterfaceVersion'])
+                if item.get('URL'):
+                    LongDescription += '\nService URL: {}'.format(item.get('URL'))
                 try:
-                    LongDescription += ' running on {} ({})'.format(self.HPCRESOURCE_URNMAP[item['ResourceID']]['Name'], item['ResourceID'])
+                    LongDescription += '\nRunning on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID'])
                 except:
                     pass
                 resource = ResourceV3(
@@ -1061,6 +1065,16 @@ class Router():
                 ShortDescription = item.get('VendorCommonName') or ''
                 if not ShortDescription:
                     ShortDescription = item['Title']
+                Description = item.get('Description')
+                if item.get('NetworkServiceEndpoints'):
+                    Description += '\nService URL: {}'.format(item.get('NetworkServiceEndpoints'))
+                if item.get('UserDocumentationURL'):
+                    Description += '\nService Documentation: {}'.format(item.get('UserDocumentationURL'))
+                if item.get('VendorSoftwareURL','') != item.get('NetworkServiceEndpoints', ''):
+                    Description += '\nVendor Product URL: {}'.format(item.get('VendorSoftwareURL'))
+                if item.get('VendorURL','') != item.get('VendorSoftwareURL', ''):
+                    Description += '\nVendor URL: {}'.format(item.get('VendorURL'))
+                
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1071,7 +1085,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = item['Description'],
+                            Description = Description,
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
@@ -1157,14 +1171,22 @@ class Router():
                             QualityLevel = 'Pre-production'
                 else:
                     QualityLevel = 'Production'
-                Description = item['Description'] or item['AppName']
+
+                Description = item.get('Description')
+                if not Description:
+                    Description = item.get('AppName')
+                    if item.get('AppVersion'):
+                        Description += ' Version "{}"'.format(item['AppVersion'])
                 LongDescription = Description
-                if item.get('AppVersion'):
-                    LongDescription += ' Version {}'.format(item['AppVersion'])
                 try:
-                    LongDescription += ' running on {} ({})'.format(self.HPCRESOURCE_URNMAP[item['ResourceID']]['Name'], item['ResourceID'])
+                    LongDescription += '\nRunning on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID'])
                 except:
                     pass
+                Handle = item.get('Handle')
+                if Handle:
+                    if Handle.get('HandleType','').lower() == 'module' and Handle.get('HandleKey'):
+                        LongDescription += '\nTo access from a shell use the command:\n   module load {}'.format(Handle.get('HandleKey'))
+
                 if item.get('Domain'):
                     Domain = ','.join(item['Domain'])
                 else:
@@ -1256,7 +1278,21 @@ class Router():
                 return(False, msg)
             new[myGLOBALURN] = local
                 
-            try:
+            try: #TODO
+                Description = item.get('Description')
+                TargetAudience = item.get('TargetAudience')
+                if TargetAudience:
+                    Description += '\nFor target audience: {}'.format(TargetAudience)
+                PackageURL = item.get('PackageURL')
+                if PackageURL:
+                    Description += '\nPackage URL: {}'.format(PackageURL)
+                    PackageFormat = item.get('PackageFormat')
+                    if PackageFormat:
+                        Description += ' ({})'.format(PackageFormat)
+                ProvisioningInstructionsURL = item.get('ProvisioningInstructionsURL')
+                if ProvisioningInstructionsURL:
+                    Description += '\nInstallation Instructions: {}'.format(ProvisioningInstructionsURL)
+                
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1267,7 +1303,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = item['Title'],
                             ProviderID = providerURN,
-                            Description = item['Description'],
+                            Description = Description,
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
