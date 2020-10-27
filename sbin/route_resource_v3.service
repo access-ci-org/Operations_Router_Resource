@@ -1,0 +1,14 @@
+[Unit]
+Description=Information Services Resource-V3 Content Router 
+After=network.target remote-fs.target nss-lookup.target
+
+[Service]
+Type=simple
+EnvironmentFile=/soft/warehouse-apps-1.0/Manage-Resource-V3/PROD/sbin/route_resource.sysconfig
+ExecStart=/soft/warehouse-apps-1.0/Manage-Resource-V3/PROD/sbin/route_resource.sh start
+User=software
+Group=admin
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
