@@ -11,11 +11,11 @@
 ### END INIT INFO
 
 # Change these lines to suit where you install your script and what you want to call it
-DAEMON_NAME=route_resource_v3
+DAEMON_NAME=route_resource
 APP_BASE=/soft/warehouse-apps-1.0/Manage-Resource-V3
 APP_SOURCE=${APP_BASE}/PROD
 WAREHOUSE_SOURCE=/soft/warehouse-1.0/PROD
-DAEMON_BIN=${APP_SOURCE}/bin/$DAEMON_NAME.py
+DAEMON_BIN=${APP_SOURCE}/bin/${DAEMON_NAME}.py
 DAEMON_LOG=${APP_BASE}/var/${DAEMON_NAME}.daemon.log
 if [[ "$2" != --pdb && "$3" != --pdb && "$4" != --pdb ]]; then
     exec >${DAEMON_LOG} 2>&1
