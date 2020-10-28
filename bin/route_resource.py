@@ -510,10 +510,11 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                desc = item.get('Description', '')
+                ShortDescription = (item.get('Description', '')).strip()
+                Description = ShortDescription
                 for c in ['ContactURL', 'ContactEmail', 'ContactPhone']:
                     if c in item and item[c] is not None and item[c] is not '':
-                        desc += '\n {} is {}'.format(c, item[c])
+                        Description += '\n {} is {}'.format(c, item[c])
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -522,9 +523,9 @@ class Router():
                             Name = item['Name'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = item['Description'],
+                            ShortDescription = ShortDescription,
                             ProviderID = None,
-                            Description = desc,
+                            Description = Description.strip(),
                             Topics = 'Support',
                             Keywords = None,
                             Audience = self.Affiliation,
@@ -593,7 +594,7 @@ class Router():
                             Name = item['Name'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = item['Description'],
+                            ShortDescription = item.get('Description', '').strip(),
                             ProviderID = None,
                             Description = None,
                             Topics = 'HPC',
@@ -756,12 +757,12 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                LongDescription = item.get('Description')
+                Description = item.get('Description', '').strip()
                 if item.get('VendorSoftwareURL'):
-                    LongDescription += '\nVendor Software URL: ' + item.get('VendorSoftwareURL')
+                    Description += '\nVendor Software URL: ' + item.get('VendorSoftwareURL')
                 if item.get('RelatedDiscussionForums'):
-                    LongDescription += '\nRelated Discussion Forum: ' + item.get('RelatedDiscussionForums')
-                Description = LongDescription[:1200]
+                    Description += '\nRelated Discussion Forum: ' + item.get('RelatedDiscussionForums')
+                ShortDescription = Description[:1200].strip()
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -770,9 +771,9 @@ class Router():
                             Name = item['CommonName'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = Description,
+                            ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = LongDescription,
+                            Description = Description.strip(),
                             Topics = None,
                             Keywords = item['Tags'],
                             Audience = self.Affiliation,
@@ -854,6 +855,16 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
+                ShortDescription = (item.get('Description') or item.get('Title') or '').strip()
+                Description = ShortDescription
+                if item.get('NetworkServiceEndpoints'):
+                    Description += '\nService Access URL: {}'.format(item.get('NetworkServiceEndpoints'))
+                if item.get('UserDocumentationURL'):
+                    Description += '\nService Documentation: {}'.format(item.get('UserDocumentationURL'))
+                if item.get('VendorSoftwareURL') and item.get('NetworkServiceEndpoints') and item.get('VendorSoftwareURL') != item.get('NetworkServiceEndpoints'):
+                    Description += '\nVendor Software URL: {}'.format(item.get('VendorSoftwareURL'))
+                if item.get('VendorURL') and item.get('VendorSoftwareURL') and item.get('VendorURL') != item.get('VendorSoftwareURL'):
+                    Description += '\nVendor URL: {}'.format(item.get('VendorURL'))
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -864,7 +875,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = item['Description'],
                             ProviderID = providerURN,
-                            Description = None,
+                            Description = Description.strip(),
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
@@ -962,11 +973,11 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                LongDescription = Description
+                ShortDescription = Description
                 if item.get('URL'):
-                    LongDescription += '\nService URL: {}'.format(item.get('URL'))
+                    Description += '\nService URL: {}'.format(item.get('URL'))
                 try:
-                    LongDescription += '\nRunning on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID'])
+                    Description += '\nRunning on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID'])
                 except:
                     pass
                 resource = ResourceV3(
@@ -977,9 +988,9 @@ class Router():
                             Name = Name,
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = Description,
+                            ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = LongDescription,
+                            Description = Description.strip(),
                             Topics = item['ServiceType'],
                             Keywords = Keywords,
                             Audience = self.Affiliation,
@@ -1062,10 +1073,8 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                ShortDescription = item.get('VendorCommonName') or ''
-                if not ShortDescription:
-                    ShortDescription = item['Title']
-                Description = item.get('Description')
+                ShortDescription = (item.get('VendorCommonName') or item.get('Title') or '').strip()
+                Description = (item.get('Description') or '').strip()
                 if item.get('NetworkServiceEndpoints'):
                     Description += '\nService URL: {}'.format(item.get('NetworkServiceEndpoints'))
                 if item.get('UserDocumentationURL'):
@@ -1085,7 +1094,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = Description,
+                            Description = Description.strip(),
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
@@ -1172,20 +1181,20 @@ class Router():
                 else:
                     QualityLevel = 'Production'
 
-                Description = item.get('Description')
-                if not Description:
-                    Description = item.get('AppName')
+                ShortDescription = (item.get('Description') or '').strip()
+                if not ShortDescription:
+                    ShortDescription = item.get('AppName','Missing Application Name').strip()
                     if item.get('AppVersion'):
-                        Description += ' Version "{}"'.format(item['AppVersion'])
-                LongDescription = Description
+                        ShortDescription += ' Version "{}"'.format(item['AppVersion'])
+                Description = ShortDescription
                 try:
-                    LongDescription += '\nRunning on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID'])
+                    Description += '\nRunning on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID'])
                 except:
                     pass
                 Handle = item.get('Handle')
                 if Handle:
                     if Handle.get('HandleType','').lower() == 'module' and Handle.get('HandleKey'):
-                        LongDescription += '\nTo access from a shell use the command:\n   module load {}'.format(Handle.get('HandleKey'))
+                        Description += '\nTo access from a shell use the command:\n   module load {}'.format(Handle.get('HandleKey'))
 
                 if item.get('Domain'):
                     Domain = ','.join(item['Domain'])
@@ -1207,9 +1216,9 @@ class Router():
                             Name = item['AppName'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = Description,
+                            ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = LongDescription,
+                            Description = Description.strip(),
                             Topics = Domain,
                             Keywords = Keywords,
                             Audience = self.Affiliation,
@@ -1285,10 +1294,8 @@ class Router():
                     Description += '\nFor target audience: {}'.format(TargetAudience)
                 PackageURL = item.get('PackageURL')
                 if PackageURL:
-                    Description += '\nPackage URL: {}'.format(PackageURL)
-                    PackageFormat = item.get('PackageFormat')
-                    if PackageFormat:
-                        Description += ' ({})'.format(PackageFormat)
+                    PackageFormat = '({})'.format(item.get('PackageFormat')) if item.get('PackageFormat') else ''
+                    Description += '\nPackage {} URL: {}'.format(PackageFormat, PackageURL)
                 ProvisioningInstructionsURL = item.get('ProvisioningInstructionsURL')
                 if ProvisioningInstructionsURL:
                     Description += '\nInstallation Instructions: {}'.format(ProvisioningInstructionsURL)
@@ -1301,9 +1308,9 @@ class Router():
                             Name = item['VendorSoftwareCommonName'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = item['Title'],
+                            ShortDescription = item.get('Title','').strip(),
                             ProviderID = providerURN,
-                            Description = Description,
+                            Description = Description.strip(),
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
@@ -1339,8 +1346,7 @@ class Router():
         myRESTYPE = 'Provider'
         me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
         self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
-        localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/organizations/' 
-        
+        localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/organizations/'
 
         cur = {}   # Current items
         new = {}   # New items
@@ -1392,7 +1398,7 @@ class Router():
                                 Name = orgs['organization_name'],
                                 ResourceGroup = myRESGROUP,
                                 Type = myRESTYPE,
-                                ShortDescription = orgs['organization_name'],
+                                ShortDescription = orgs.get('organization_name', '').strip(),
                                 ProviderID = None,
                                 Description = orgs['organization_name'],
                                 Topics = 'HPC, XSEDE',
@@ -1515,7 +1521,7 @@ class Router():
                 orgNames += orgs['organization_name']
             
             # For ShortDescription 
-            shortDescription = '{} ({}) provided by the {}'.format(item['resource_descriptive_name'], item['info_resourceid'], orgNames)
+            ShortDescription = '{} ({}) provided by the {}'.format(item['resource_descriptive_name'], item['info_resourceid'], orgNames)
 
             try:
                 resource = ResourceV3(
@@ -1526,7 +1532,7 @@ class Router():
                             Name = item['resource_descriptive_name'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = shortDescription,
+                            ShortDescription = ShortDescription,
                             # pick the fitst, if contain multiple orgs
                             ProviderID = myProviderID,
                             Description = item['resource_description'],
@@ -1536,7 +1542,7 @@ class Router():
                     )
                 resource.save()
                 if self.ESEARCH:
-                    resource.indexing()
+                    resource.indexing(relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -1687,7 +1693,7 @@ class Router():
                             orgNames += orgs['organization_name']
                         
                         # For ShortDescription
-                        shortDescription = '{} ({}) provided by the {}'.format(sub['resource_descriptive_name'], sub['info_resourceid'], orgNames)
+                        ShortDescription = '{} ({}) provided by the {}'.format(sub['resource_descriptive_name'], sub['info_resourceid'], orgNames)
 
                         try:
                             resource = ResourceV3(
@@ -1698,7 +1704,7 @@ class Router():
                                         Name = sub['resource_descriptive_name'],
                                         ResourceGroup = myRESGROUP,
                                         Type = myRESTYPE,
-                                        ShortDescription = shortDescription,
+                                        ShortDescription = ShortDescription,
                                         # pick the fitst, if contain multiple orgs
                                         ProviderID = myProviderID,
                                         Description = sub['resource_description'],
@@ -1708,7 +1714,7 @@ class Router():
                                 )
                             resource.save()
                             if self.ESEARCH:
-                                resource.indexing()
+                                resource.indexing(relations=myNEWRELATIONS)
                         except Exception as e:
                             msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                             self.logger.error(msg)
