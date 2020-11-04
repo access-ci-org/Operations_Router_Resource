@@ -202,6 +202,7 @@ class Router():
 
         # Used in Get_HTTP as memory cache for contents
         self.HTTP_CACHE = {}
+        self.URL_USE_COUNT = {}
 
         # Loading all the Catalog entries for our affiliation
         self.CATALOGS = {}
@@ -218,6 +219,12 @@ class Router():
                 self.exit(1)
             myCAT = self.CATALOGS[stepconf['CATALOGURN']]
             stepconf['SOURCEURL'] = myCAT['CatalogAPIURL']
+            
+            # if use the same CatalogAPIURL, count and keep 
+            if stepconf['SOURCEURL'] in self.URL_USE_COUNT:
+                self.URL_USE_COUNT[stepconf['SOURCEURL']] += 1
+            else:
+                self.URL_USE_COUNT[stepconf['SOURCEURL']] = 1
 
             try:
                 SRCURL = urlparse(stepconf['SOURCEURL'])
@@ -304,8 +311,11 @@ class Router():
             self.logger.error('Response not in expected JSON format ({})'.format(e))
             return(None)
         else:
-            # save retrieved content to the HTTP_CACHE to reuse from memory
-            self.HTTP_CACHE[data_cache_key] = content
+            # cache content only for the url used more than once
+            if url.geturl() in self.URL_USE_COUNT:
+                if (self.URL_USE_COUNT[url.geturl()] > 1):
+                    # save retrieved content to the HTTP_CACHE to reuse from memory
+                    self.HTTP_CACHE[data_cache_key] = content
             return({contype: content})
 
     def Analyze_CONTENT(self, content):
