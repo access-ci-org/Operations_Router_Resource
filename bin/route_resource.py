@@ -815,6 +815,11 @@ class Router():
         me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
         self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
 
+        ##########
+        # Load with selected items for GLUE2 Abstract Service and Endpoint
+        RSP2GLUE2 = {}
+        ##########
+        
         cur = {}     # Current items
         new = {}     # New items
         for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
@@ -902,6 +907,12 @@ class Router():
 
             self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
             self.STATS.update({me + '.Update'})
+            
+            
+#            if item.get('VendorSoftwareURL','') == 'http://grid.ncsa.illinois.edu/ssh/' and
+#                    item.get('HostingResourceID'):
+#                RSP2GLUE2[myGLOBALURN] = item
+#       }
  
         self.Delete_OLD(me, cur, new)
 
