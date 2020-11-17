@@ -1,0 +1,14 @@
+tag-1.0-20201113 JP
+  - Improve conf/ *bin/ file names and contents to better support prodution and (mac) development environments
+
+tag-1.0-20201028 JP
+  - Many more ShortDescriptio and Description improvements
+
+tag-1.0-20201027 JP
+  - Improve Resource Description with software and service details
+
+tag-0.4-20200923 JP
+  - Add missing Write_RSP_Packaged_Software ProviderID
+  - Fix multiple 'Producton' mis-spellings of 'Production'
+  - Fix indexing() call to properly pass relations
+  - Implement Write_RSP_Vendor_Software (Software:Vendor Software)
