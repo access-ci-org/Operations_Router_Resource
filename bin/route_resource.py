@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 #
-# Router to synchronize RSP and Glue2 informaton into the Warehouse Resource tables
+# Router to synchronize RSP, GLUE2, and RDR informaton into the Warehouse Resource tables
 #
 # Author: JP Navarro, March 2020
+#         Jonathan Kim, October 2020
 #
 # Resource Group:Type
 #   Function
@@ -11,6 +12,12 @@
 #   Write_RSP_Gateway_Providers
 #   Write_RSP_Support_Providers
 #   Write_RSP_HPC_Providers          -> (including XSEDE)
+#   Write_RDR_Providers
+#
+# Computing Tools and Services:*
+#   Write_RSP_HPC_Resources
+#   Write_RDR_BaseResources
+#   Write_RDR_SubResources
 #
 # Software:Vendor Software
 #   Write_RSP_Vendor_Software
@@ -28,7 +35,6 @@
 #
 import argparse
 from collections import Counter
-#import datetime
 from datetime import datetime, timezone, timedelta
 from hashlib import md5
 import http.client as httplib
@@ -181,12 +187,22 @@ class Router():
         self.HPCRESOURCE_URNMAP = self.memory['hpc_urnmap']
         self.memory['hpc_detail'] = {}           # Resource detail by ResourceID
         self.HPCRESOURCE_INFO = self.memory['hpc_detail']
+        self.memory['rdrsp_urnmap'] = {}           # Mapping of RDR organization id to its GLOBALURN
+        self.RDRPROVIDER_URNMAP = self.memory['rdrsp_urnmap']
+        self.memory['rdrbase_urnmap'] = {}      # Mapping of RDR base-resource id to its GLOBALURN
+        self.RDRRESOURCE_BASE_URNMAP = self.memory['rdrbase_urnmap']
+        self.memory['rdrsub_urnmap'] = {}      # Mapping of RDR sub-resource id to its GLOBALURN
+        self.RDRRESOURCE_SUB_URNMAP = self.memory['rdrsub_urnmap']
         if self.args.dev:
             self.WAREHOUSE_API_PREFIX = 'http://localhost:8000'
         else:
             self.WAREHOUSE_API_PREFIX = 'https://info.xsede.org/wh1'
         self.WAREHOUSE_API_VERSION = 'v3'
         self.WAREHOUSE_CATALOG = 'ResourceV3'
+
+        # Used in Get_HTTP as memory cache for contents
+        self.HTTP_CACHE = {}
+        self.URL_USE_COUNT = {}
 
         # Loading all the Catalog entries for our affiliation
         self.CATALOGS = {}
@@ -203,6 +219,12 @@ class Router():
                 self.exit(1)
             myCAT = self.CATALOGS[stepconf['CATALOGURN']]
             stepconf['SOURCEURL'] = myCAT['CatalogAPIURL']
+            
+            # if use the same CatalogAPIURL, count and keep 
+            if stepconf['SOURCEURL'] in self.URL_USE_COUNT:
+                self.URL_USE_COUNT[stepconf['SOURCEURL']] += 1
+            else:
+                self.URL_USE_COUNT[stepconf['SOURCEURL']] = 1
 
             try:
                 SRCURL = urlparse(stepconf['SOURCEURL'])
@@ -264,7 +286,17 @@ class Router():
         return(':'.join(newargs))
 
     def Get_HTTP(self, url, contype):
+        # return previously saved data if the source is the same 
+        data_cache_key = contype + ':' + url.geturl()
+        if data_cache_key in self.HTTP_CACHE:
+            return({contype: self.HTTP_CACHE[data_cache_key]})
+
         headers = {}
+        # different headers for RDR site 
+        if 'rdr.xsede.org' == url.hostname:
+            headers = {'Content-type': 'application/json',
+                        'XA-CLIENT': 'XSEDE',
+                        'XA-KEY-FORMAT': 'underscore'}
         ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         conn = httplib.HTTPSConnection(host=url.hostname, port=getattr(url, 'port', None), context=ctx)
 
@@ -279,6 +311,11 @@ class Router():
             self.logger.error('Response not in expected JSON format ({})'.format(e))
             return(None)
         else:
+            # cache content only for the url used more than once
+            if url.geturl() in self.URL_USE_COUNT:
+                if (self.URL_USE_COUNT[url.geturl()] > 1):
+                    # save retrieved content to the HTTP_CACHE to reuse from memory
+                    self.HTTP_CACHE[data_cache_key] = content
             return({contype: content})
 
     def Analyze_CONTENT(self, content):
@@ -483,10 +520,11 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                desc = item.get('Description', '')
+                ShortDescription = (item.get('Description', '')).strip()
+                Description = ShortDescription
                 for c in ['ContactURL', 'ContactEmail', 'ContactPhone']:
                     if c in item and item[c] is not None and item[c] is not '':
-                        desc += '\n {} is {}'.format(c, item[c])
+                        Description += '\n {} is {}'.format(c, item[c])
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -495,9 +533,9 @@ class Router():
                             Name = item['Name'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = item['Description'],
+                            ShortDescription = ShortDescription,
                             ProviderID = None,
-                            Description = desc,
+                            Description = Description.strip(),
                             Topics = 'Support',
                             Keywords = None,
                             Audience = self.Affiliation,
@@ -566,7 +604,7 @@ class Router():
                             Name = item['Name'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = item['Description'],
+                            ShortDescription = item.get('Description', '').strip(),
                             ProviderID = None,
                             Description = None,
                             Topics = 'HPC',
@@ -729,12 +767,12 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                LongDescription = item.get('Description')
+                Description = item.get('Description', '').strip()
                 if item.get('VendorSoftwareURL'):
-                    LongDescription += '\nVendor Software URL: ' + item.get('VendorSoftwareURL')
+                    Description += '\nVendor Software URL: ' + item.get('VendorSoftwareURL')
                 if item.get('RelatedDiscussionForums'):
-                    LongDescription += '\nRelated Discussion Forum: ' + item.get('RelatedDiscussionForums')
-                Description = LongDescription[:1200]
+                    Description += '\nRelated Discussion Forum: ' + item.get('RelatedDiscussionForums')
+                ShortDescription = Description[:1200].strip()
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -743,9 +781,9 @@ class Router():
                             Name = item['CommonName'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = Description,
+                            ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = LongDescription,
+                            Description = Description.strip(),
                             Topics = None,
                             Keywords = item['Tags'],
                             Audience = self.Affiliation,
@@ -777,6 +815,11 @@ class Router():
         me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
         self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
 
+        ##########
+        # Load with selected items for GLUE2 Abstract Service and Endpoint
+        RSP2GLUE2 = {}
+        ##########
+        
         cur = {}     # Current items
         new = {}     # New items
         for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
@@ -827,6 +870,16 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
+                ShortDescription = (item.get('Description') or item.get('Title') or '').strip()
+                Description = ShortDescription
+                if item.get('NetworkServiceEndpoints'):
+                    Description += '\nService Access URL: {}'.format(item.get('NetworkServiceEndpoints'))
+                if item.get('UserDocumentationURL'):
+                    Description += '\nService Documentation: {}'.format(item.get('UserDocumentationURL'))
+                if item.get('VendorSoftwareURL') and item.get('NetworkServiceEndpoints') and item.get('VendorSoftwareURL') != item.get('NetworkServiceEndpoints'):
+                    Description += '\nVendor Software URL: {}'.format(item.get('VendorSoftwareURL'))
+                if item.get('VendorURL') and item.get('VendorSoftwareURL') and item.get('VendorURL') != item.get('VendorSoftwareURL'):
+                    Description += '\nVendor URL: {}'.format(item.get('VendorURL'))
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -837,7 +890,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = item['Description'],
                             ProviderID = providerURN,
-                            Description = None,
+                            Description = Description.strip(),
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
@@ -854,6 +907,12 @@ class Router():
 
             self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
             self.STATS.update({me + '.Update'})
+            
+            
+#            if item.get('VendorSoftwareURL','') == 'http://grid.ncsa.illinois.edu/ssh/' and
+#                    item.get('HostingResourceID'):
+#                RSP2GLUE2[myGLOBALURN] = item
+#       }
  
         self.Delete_OLD(me, cur, new)
 
@@ -876,6 +935,11 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
+            if not self.HPCRESOURCE_INFO.get(item['ResourceID']):
+                msg = 'Undefined ResourceID={} in Local ID={}'.format(item['ResourceID'], myGLOBALURN)
+                self.logger.error(msg)
+                break
+                
             mySiteID = self.HPCRESOURCE_INFO.get(item['ResourceID'])['SiteID']
             providerURN = self.HPCPROVIDER_URNMAP[mySiteID]
             myResourceURN = self.HPCRESOURCE_URNMAP.get(item['ResourceID'])
@@ -930,11 +994,11 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                LongDescription = Description
-                if item.get('AppVersion', '') != '':
-                    LongDescription += ' Version {}'.format(item['InterfaceVersion'])
+                ShortDescription = Description
+                if item.get('URL'):
+                    Description += '\nService URL: {}'.format(item.get('URL'))
                 try:
-                    LongDescription += ' running on {} ({})'.format(self.HPCRESOURCE_URNMAP[item['ResourceID']]['Name'], item['ResourceID'])
+                    Description += '\nRunning on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID'])
                 except:
                     pass
                 resource = ResourceV3(
@@ -945,9 +1009,9 @@ class Router():
                             Name = Name,
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = Description,
+                            ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = LongDescription,
+                            Description = Description.strip(),
                             Topics = item['ServiceType'],
                             Keywords = Keywords,
                             Audience = self.Affiliation,
@@ -1030,9 +1094,17 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                ShortDescription = item.get('VendorCommonName') or ''
-                if not ShortDescription:
-                    ShortDescription = item['Title']
+                ShortDescription = (item.get('VendorCommonName') or item.get('Title') or '').strip()
+                Description = (item.get('Description') or '').strip()
+                if item.get('NetworkServiceEndpoints'):
+                    Description += '\nService URL: {}'.format(item.get('NetworkServiceEndpoints'))
+                if item.get('UserDocumentationURL'):
+                    Description += '\nService Documentation: {}'.format(item.get('UserDocumentationURL'))
+                if item.get('VendorSoftwareURL','') != item.get('NetworkServiceEndpoints', ''):
+                    Description += '\nVendor Product URL: {}'.format(item.get('VendorSoftwareURL'))
+                if item.get('VendorURL','') != item.get('VendorSoftwareURL', ''):
+                    Description += '\nVendor URL: {}'.format(item.get('VendorURL'))
+                
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1043,7 +1115,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = item['Description'],
+                            Description = Description.strip(),
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
@@ -1129,14 +1201,22 @@ class Router():
                             QualityLevel = 'Pre-production'
                 else:
                     QualityLevel = 'Production'
-                Description = item['Description'] or item['AppName']
-                LongDescription = Description
-                if item.get('AppVersion'):
-                    LongDescription += ' Version {}'.format(item['AppVersion'])
+
+                ShortDescription = (item.get('Description') or '').strip()
+                if not ShortDescription:
+                    ShortDescription = item.get('AppName','Missing Application Name').strip()
+                    if item.get('AppVersion'):
+                        ShortDescription += ' Version "{}"'.format(item['AppVersion'])
+                Description = ShortDescription
                 try:
-                    LongDescription += ' running on {} ({})'.format(self.HPCRESOURCE_URNMAP[item['ResourceID']]['Name'], item['ResourceID'])
+                    Description += '\nRunning on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID'])
                 except:
                     pass
+                Handle = item.get('Handle')
+                if Handle:
+                    if Handle.get('HandleType','').lower() == 'module' and Handle.get('HandleKey'):
+                        Description += '\nTo access from a shell use the command:\n   module load {}'.format(Handle.get('HandleKey'))
+
                 if item.get('Domain'):
                     Domain = ','.join(item['Domain'])
                 else:
@@ -1157,9 +1237,9 @@ class Router():
                             Name = item['AppName'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = Description,
+                            ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = LongDescription,
+                            Description = Description.strip(),
                             Topics = Domain,
                             Keywords = Keywords,
                             Audience = self.Affiliation,
@@ -1228,7 +1308,19 @@ class Router():
                 return(False, msg)
             new[myGLOBALURN] = local
                 
-            try:
+            try: #TODO
+                Description = item.get('Description')
+                TargetAudience = item.get('TargetAudience')
+                if TargetAudience:
+                    Description += '\nFor target audience: {}'.format(TargetAudience)
+                PackageURL = item.get('PackageURL')
+                if PackageURL:
+                    PackageFormat = '({})'.format(item.get('PackageFormat')) if item.get('PackageFormat') else ''
+                    Description += '\nPackage {} URL: {}'.format(PackageFormat, PackageURL)
+                ProvisioningInstructionsURL = item.get('ProvisioningInstructionsURL')
+                if ProvisioningInstructionsURL:
+                    Description += '\nInstallation Instructions: {}'.format(ProvisioningInstructionsURL)
+                
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1237,9 +1329,9 @@ class Router():
                             Name = item['VendorSoftwareCommonName'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = item['Title'],
+                            ShortDescription = item.get('Title','').strip(),
                             ProviderID = providerURN,
-                            Description = item['Description'],
+                            Description = Description.strip(),
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
@@ -1262,6 +1354,406 @@ class Router():
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
         self.Log_STEP(me)
         return(0, '')
+
+
+    #####################################################################
+    # Function for loading RDR (Resource Description Repository) data
+    # Load RDR's organization data to ResourceV3 tables (local, standard)
+    # This function populates self.RDRPROVIDER_URNMAP
+    #
+    def Write_RDR_Providers(self, content, contype, config):
+        start_utc = datetime.now(timezone.utc)
+        myRESGROUP = 'Organizations'
+        myRESTYPE = 'Provider'
+        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
+        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
+        localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/organizations/'
+
+        cur = {}   # Current items
+        new = {}   # New items
+        # get existing organization data from local table
+        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
+            cur[item.ID] = item
+
+        for item in content[contype]['resources'] :
+            # Support multiple organiztion cases 
+            for orgs in item['organizations']:
+                myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(orgs['organization_id']))
+
+                # Skip if this org already processed
+                if myGLOBALURN == self.RDRPROVIDER_URNMAP.get(orgs['organization_id']):
+                    continue
+
+                # This will be used when resource data is loading for relationship connections
+                self.RDRPROVIDER_URNMAP[orgs['organization_id']] = myGLOBALURN
+
+                # --------------------------------------------
+                # update ResourceV3 (local) table
+                try:
+                    local = ResourceV3Local(
+                                ID = myGLOBALURN,
+                                CreationTime = datetime.now(timezone.utc),
+                                Validity = self.DefaultValidity,
+                                Affiliation = self.Affiliation,
+                                LocalID = str(orgs['organization_id']),
+                                LocalType = 'organization',
+                                LocalURL = localUrlPrefix + str(orgs['organization_id']),
+                                CatalogMetaURL = self.CATALOGURN_to_URL(config['CATALOGURN']),
+                                EntityJSON = orgs,
+                            )
+                    local.save()
+                except Exception as e:
+                    msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                    self.logger.error(msg)
+                    return(False, msg)
+                new[myGLOBALURN] = local
+
+                # --------------------------------------------
+                # update ResourceV3 (standard) table
+                try:
+                    resource = ResourceV3(
+                                ID = myGLOBALURN,
+                                Affiliation = self.Affiliation,
+                                LocalID = str(orgs['organization_id']),
+                                QualityLevel = 'Production',
+                                Name = orgs['organization_name'],
+                                ResourceGroup = myRESGROUP,
+                                Type = myRESTYPE,
+                                ShortDescription = orgs.get('organization_name', '').strip(),
+                                ProviderID = None,
+                                Description = orgs['organization_name'],
+                                Topics = 'HPC, XSEDE',
+                                Keywords = orgs['organization_abbreviation'],
+                                Audience = self.Affiliation,
+                        )
+                    resource.save()
+                    if self.ESEARCH:
+                        resource.indexing()
+                except Exception as e:
+                    msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                    self.logger.error(msg)
+                    return(False, msg)
+                
+
+            
+            self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
+            self.STATS.update({me + '.Update'})
+
+        self.Delete_OLD(me, cur, new)
+
+        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
+        self.Log_STEP(me)
+        return(0, '')
+
+    #################################################################################
+    # Function for loading RDR (Resource Description Repository) data
+    # Load RDR's base-resource data to ResourceV3 tables (local, standard, relation)
+    # This function populates self.RDRRESOURCE_BASE_URNMAP
+    #
+    def Write_RDR_BaseResources(self, content, contype, config):
+        start_utc = datetime.now(timezone.utc)
+        myRESGROUP = 'Computing Tools and Services'
+        myRESTYPE = 'Research Computing'
+        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
+        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
+        localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/resources/id/' 
+        
+        cur = {}   # Current items
+        new = {}   # New items
+        # get existing base resource data from local table
+        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
+            cur[item.ID] = item
+        
+        for item in content[contype]['resources'] :
+            myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(item['resource_id']))
+
+            # --------------------------------------------
+            # prepare for ResourceV3 (relation) table
+            # update occurs later
+
+            # update to RDRRESOURCE_BASE_URNMAP
+            self.RDRRESOURCE_BASE_URNMAP[item['resource_id']] = myGLOBALURN
+            # The new relations for this item, key=related ID, value=type of relation
+            myNEWRELATIONS = {}
+            # Support multiple organiztion cases for relation table update,but set
+            # only the first organization for ProviderID of standard table 
+            myProviderID = None
+            for orgs in item['organizations']:
+                orgURN = self.RDRPROVIDER_URNMAP.get(orgs.get('organization_id', ''), None)
+                if orgURN:
+                    # save only the first provider
+                    if not myProviderID:
+                        myProviderID = self.RDRPROVIDER_URNMAP.get(orgs['organization_id'])
+                    # set relation with organizations
+                    myNEWRELATIONS[orgURN] = 'Provided By'
+
+            # set relation with "XSEDE support org"
+            supportURN = self.SUPPORTPROVIDER_URNMAP.get('helpdesk.xsede.org', None)
+            if supportURN:
+                myNEWRELATIONS[supportURN] = 'Supported By'
+       
+            # --------------------------------------------
+            # update ResourceV3 (local) table
+            try:
+                local = ResourceV3Local(
+                            ID = myGLOBALURN,
+                            CreationTime = datetime.now(timezone.utc),
+                            Validity = self.DefaultValidity,
+                            Affiliation = self.Affiliation,
+                            LocalID = str(item['resource_id']),
+                            LocalType = 'base-resource',
+                            LocalURL = localUrlPrefix + str(item['resource_id']),
+                            CatalogMetaURL = self.CATALOGURN_to_URL(config['CATALOGURN']),
+                            EntityJSON = item,
+                        )
+                local.save()
+            except Exception as e:
+                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                self.logger.error(msg)
+                return(False, msg)
+            new[myGLOBALURN] = local
+            
+            # --------------------------------------------
+            # update ResourceV3 (standard) table  
+
+            # For QalityLevel from rdr.currentStatuses
+            if not item['current_statuses']:  # empty cases
+                    qualityLevel='Retired'
+            if 'decommissioned' in item['current_statuses']:
+                qualityLevel = 'Retired'
+            elif set(['friendly', 'production', 'post-production']) & set(item['current_statuses']):
+                qualityLevel = 'Production'
+            elif 'pre-production' in item['current_statuses']:
+                qualityLevel = 'Testing'
+            else: # should not be here if currentStatueses is correct
+                qualityLevel = 'Retired'
+
+            # For Keywords, get comma seperated org-abbrev for multiple orgs.
+            # For ShortDescription, get comma seperated org-name for multiple orgs.
+            orgKeywords=''
+            orgNames=''
+            for orgs in item['organizations']:
+                if orgKeywords:
+                    orgKeywords += ', '
+                orgKeywords += orgs['organization_abbreviation']
+                if orgNames:
+                    # replace is needed, otherwise incorrect
+                    orgNames = orgNames.replace('\n', '') + ', '
+                orgNames += orgs['organization_name']
+            
+            # For ShortDescription 
+            ShortDescription = '{} ({}) provided by the {}'.format(item['resource_descriptive_name'], item['info_resourceid'], orgNames)
+
+            try:
+                resource = ResourceV3(
+                            ID = myGLOBALURN,
+                            Affiliation = self.Affiliation,
+                            LocalID = str(item['resource_id']),
+                            QualityLevel = qualityLevel,
+                            Name = item['resource_descriptive_name'],
+                            ResourceGroup = myRESGROUP,
+                            Type = myRESTYPE,
+                            ShortDescription = ShortDescription,
+                            # pick the fitst, if contain multiple orgs
+                            ProviderID = myProviderID,
+                            Description = item['resource_description'],
+                            Topics = 'HPC',
+                            Keywords = orgKeywords + ', XSEDE',
+                            Audience = self.Affiliation,
+                    )
+                resource.save()
+                if self.ESEARCH:
+                    resource.indexing(relations=myNEWRELATIONS)
+            except Exception as e:
+                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                self.logger.error(msg)
+                return(False, msg)
+            
+            # --------------------------------------------
+            # update ResourceV3 (relation) table
+            self.Update_REL(myGLOBALURN, myNEWRELATIONS)
+
+            self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
+            self.STATS.update({me + '.Update'})
+
+        self.Delete_OLD(me, cur, new)
+
+        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
+        self.Log_STEP(me)
+        return(0, '')
+
+
+    ################################################################################
+    # Function for loading RDR (Resource Description Repository) data
+    # Load RDR's sub-resource data to ResourceV3 tables (local, standard, relation)
+    # This function populates self.RDRRESOURCE_SUB_URNMAP
+    #
+    def Write_RDR_SubResources(self, content, contype, config):
+        start_utc = datetime.now(timezone.utc)
+        myRESGROUP = 'Computing Tools and Services'
+        myRESTYPE = 'Research Computing'
+        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
+        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
+        
+        cur = {}   # Current items
+        new = {}   # New items
+        # get existing sub resource data from local table
+        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
+            cur[item.ID] = item
+
+        subNameList=['compute_resources', 'storage_resources', 'other_resources', 'grid_resources']
+        for item in content[contype]['resources'] :
+            # iterate different types of sub-resource
+            for subName in subNameList:
+                localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/' + subName + '/id/' 
+
+                res = item.get(subName,None)
+                # if one or more sub-resource type exist
+                if res:
+                    # iterate sub-resource types in base-resource
+                    for sub in item[subName]:
+                        if subName == 'compute_resources':
+                            subID = str(sub['compute_resource_id'])
+                            localType = 'computeResource'
+                            if sub['machine_type']:
+                                topics = 'HPC, Compute, ' + sub['machine_type']
+                            else:
+                                topics = 'HPC, Compute'
+                        elif subName == 'storage_resources':
+                            subID = str(sub['storage_resource_id'])
+                            localType = 'storageResource'
+                            topics = 'HPC, Storage'
+                        elif subName == 'other_resources':
+                            subID =  str(sub['other_resource_id'])
+                            localType = 'otherResource'
+                            topics = 'HPC'  # no adding ', Other' for this
+                        elif subName == 'grid_resources':
+                            subID = str(sub['grid_resource_id'])
+                            localType = 'gridResource'
+                            topics = 'HPC, Grid'
+
+                        myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], subID)
+
+                        # --------------------------------------------
+                        # prepare for ResourceV3 (relation) table
+                        # update occurs later
+
+                        # update to RDRRESOURCE_SUB_URNMAP
+                        self.RDRRESOURCE_SUB_URNMAP[subID] = myGLOBALURN
+                        # The new relations for this item, key=related ID, value=type of relation
+                        myNEWRELATIONS = {}
+                        # Support multiple organiztion cases for relation table update,but set
+                        # only the first organization for ProviderID of standard table 
+                        myProviderID = None
+                        for orgs in item['organizations']:
+                            orgURN = self.RDRPROVIDER_URNMAP.get(orgs.get('organization_id', ''), None)
+                            if orgURN:
+                                # save only the first provider
+                                if not myProviderID:
+                                    myProviderID = self.RDRPROVIDER_URNMAP.get(orgs['organization_id'])
+                                # set relation with organizations
+                                myNEWRELATIONS[orgURN] = 'Provided By'
+
+                        # set relation with base-resource
+                        baseURN = self.RDRRESOURCE_BASE_URNMAP.get(item.get('resource_id', ''), None)
+                        if baseURN:
+                            myNEWRELATIONS[baseURN] = 'Component Of'
+                        # set relation with "XSEDE support org"
+                        supportURN = self.SUPPORTPROVIDER_URNMAP.get('helpdesk.xsede.org', None)
+                        if supportURN:
+                            myNEWRELATIONS[supportURN] = 'Supported By'
+
+
+                        # --------------------------------------------
+                        # update ResourceV3 (local) table
+                        try:
+                            local = ResourceV3Local(
+                                        ID = myGLOBALURN,
+                                        CreationTime = datetime.now(timezone.utc),
+                                        Validity = self.DefaultValidity,
+                                        Affiliation = self.Affiliation,
+                                        LocalID = subID, 
+                                        LocalType = localType,
+                                        LocalURL = localUrlPrefix + subID, 
+                                        CatalogMetaURL = self.CATALOGURN_to_URL(config['CATALOGURN']),
+                                        EntityJSON = sub,
+                                    )
+                            local.save()
+                        except Exception as e:
+                            msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                            self.logger.error(msg)
+                            return(False, msg)
+                        new[myGLOBALURN] = local
+
+
+                        # --------------------------------------------
+                        # update ResourceV3 (standard) table  
+                        
+                        # For QalityLevel from sub.currentStatuses
+                        if not sub['current_statuses']:  # empty cases
+                                qualityLevel='Retired'
+                        if 'decommissioned' in sub['current_statuses']:
+                            qualityLevel = 'Retired'
+                        elif set(['friendly', 'production', 'post-production']) & set(sub['current_statuses']):
+                            qualityLevel = 'Production'
+                        elif 'pre-production' in sub['current_statuses']:
+                            qualityLevel = 'Testing'
+                        else: # should not be here if currentStatueses is correct
+                            qualityLevel = 'Retired'
+
+                        # For Keywords, get comma seperated org-abbrev for multiple orgs.
+                        # For ShortDescription, get comma seperated org-name for multiple orgs.
+                        orgKeywords=''
+                        orgNames=''
+                        for orgs in item['organizations']:
+                            if orgKeywords:
+                                orgKeywords += ', '
+                            orgKeywords += orgs['organization_abbreviation']
+                            if orgNames:
+                                orgNames = orgNames.replace('\n', '') + ', '
+                            orgNames += orgs['organization_name']
+                        
+                        # For ShortDescription
+                        ShortDescription = '{} ({}) provided by the {}'.format(sub['resource_descriptive_name'], sub['info_resourceid'], orgNames)
+
+                        try:
+                            resource = ResourceV3(
+                                        ID = myGLOBALURN,
+                                        Affiliation = self.Affiliation,
+                                        LocalID = subID,
+                                        QualityLevel = qualityLevel,
+                                        Name = sub['resource_descriptive_name'],
+                                        ResourceGroup = myRESGROUP,
+                                        Type = myRESTYPE,
+                                        ShortDescription = ShortDescription,
+                                        # pick the fitst, if contain multiple orgs
+                                        ProviderID = myProviderID,
+                                        Description = sub['resource_description'],
+                                        Topics = topics,
+                                        Keywords = orgKeywords + ', XSEDE',
+                                        Audience = self.Affiliation,
+                                )
+                            resource.save()
+                            if self.ESEARCH:
+                                resource.indexing(relations=myNEWRELATIONS)
+                        except Exception as e:
+                            msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                            self.logger.error(msg)
+                            return(False, msg)
+
+                        # ----------------------------------------
+                        # update ResourceV3 (relation) table
+                        self.Update_REL(myGLOBALURN, myNEWRELATIONS)
+
+                        self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
+                        self.STATS.update({me + '.Update'})
+
+        self.Delete_OLD(me, cur, new)
+
+        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
+        self.Log_STEP(me)
+        return(0, '')
+
 
     def Run(self):
         while True:
