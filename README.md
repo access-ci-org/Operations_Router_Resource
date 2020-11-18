@@ -1,4 +1,4 @@
-# XSEDE Information Services - Manage-Resources-V3
+# Manage-Resource-V3 Router for XSEDE Information Services
 
 Synchronize RSP, RDR, and Glue2 Resources to the Information Services cross-institutional Resources Catalog Version 3.
 
