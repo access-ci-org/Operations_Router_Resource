@@ -1,8 +1,8 @@
 APP_NAME=route_resource_v3
 APP_BASE=/soft/warehouse-apps-1.0/Manage-Resource-V3
-APP_BIN=/soft/warehouse-apps-1.0/Manage-Resource-V3/PROD/bin/route_resource.py
+APP_BIN=/soft/warehouse-apps-1.0/Manage-Resource-V3/PROD/bin/route_resource_v3.py
 # Add any command line options for your daemon here
-APP_OPTS="-c /soft/warehouse-apps-1.0/Manage-Resource-V3/conf/route_resource.conf"
+APP_OPTS="-c /soft/warehouse-apps-1.0/Manage-Resource-V3/conf/route_resource_v3.conf"
 
 PYTHON_BASE=/soft/python/python-3.7.6-base
 PIPENV_BASE=/soft/warehouse-apps-1.0/Manage-Resource-V3/python

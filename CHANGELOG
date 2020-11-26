@@ -1,3 +1,6 @@
+tag-1.0-20201126 JP
+  - Name files consitently route_resource_v3
+
 tag-1.0-20201113 JP
   - Improve conf/ *bin/ file names and contents to better support prodution and (mac) development environments
 

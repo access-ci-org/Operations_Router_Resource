@@ -11,7 +11,7 @@
 ### END INIT INFO
 
 ####### Customizations START #######
-APP_NAME=route_resource
+APP_NAME=route_resource_v3
 APP_BASE=/soft/warehouse-apps-1.0/Manage-Resource-V3
 WAREHOUSE_BASE=/soft/warehouse-1.0
 # Override in shell environment
