@@ -521,13 +521,13 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                ShortDescription = (item.get('Description', '')).strip()
+                ShortDescription = (item.get('Description', ''))
                 Description = ShortDescription
                 for c in ['ContactURL', 'ContactEmail', 'ContactPhone']:
                     if c in item and item[c] is not None and item[c] is not '':
                         Description += '\n {} is {}'.format(c, item[c])
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
+                NewDescription = formatter(Description, filter_name='restructuredtext')
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -770,14 +770,14 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                Description = item.get('Description', '').strip()
+                Description = item.get('Description', '')
                 ShortDescription = Description[:1200].strip()
                 if item.get('VendorSoftwareURL'):
                     Description += '\nVendor Software URL: ' + item.get('VendorSoftwareURL')
                 if item.get('RelatedDiscussionForums'):
                     Description += '\nRelated Discussion Forum: ' + item.get('RelatedDiscussionForums')
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
+                NewDescription = formatter(Description, filter_name='restructuredtext')
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -886,7 +886,7 @@ class Router():
                 if item.get('VendorURL') and item.get('VendorSoftwareURL') and item.get('VendorURL') != item.get('VendorSoftwareURL'):
                     Description += '\nVendor URL: {}'.format(item.get('VendorURL'))
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
+                NewDescription = formatter(Description, filter_name='restructuredtext')
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1009,7 +1009,7 @@ class Router():
                 except:
                     pass
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
+                NewDescription = formatter(Description, filter_name='restructuredtext')
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1104,7 +1104,7 @@ class Router():
                 
             try:
                 ShortDescription = (item.get('VendorCommonName') or item.get('Title') or '').strip()
-                Description = (item.get('Description') or '').strip()
+                Description = (item.get('Description') or '')
                 if item.get('NetworkServiceEndpoints'):
                     Description += '\nService URL: {}'.format(item.get('NetworkServiceEndpoints'))
                 if item.get('UserDocumentationURL'):
@@ -1114,7 +1114,7 @@ class Router():
                 if item.get('VendorURL','') != item.get('VendorSoftwareURL', ''):
                     Description += '\nVendor URL: {}'.format(item.get('VendorURL'))
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
+                NewDescription = formatter(Description, filter_name='restructuredtext')
                 
                 resource = ResourceV3(
                             ID = myGLOBALURN,
@@ -1226,7 +1226,7 @@ class Router():
                 Handle = item.get('Handle')
                 if Handle:
                     if Handle.get('HandleType','').lower() == 'module' and Handle.get('HandleKey'):
-                        Description += '\nTo access from a shell use the command:\n   module load {}'.format(Handle.get('HandleKey'))
+                        Description += '\nTo access from a shell use the command:\n\n  module load {}'.format(Handle.get('HandleKey'))
 
                 if item.get('Domain'):
                     Domain = ','.join(item['Domain'])
@@ -1240,7 +1240,7 @@ class Router():
                 else:
                     Keywords = None
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
+                NewDescription = formatter(Description, filter_name='restructuredtext')
                     
                 resource = ResourceV3(
                             ID = myGLOBALURN,
@@ -1334,7 +1334,7 @@ class Router():
                 if ProvisioningInstructionsURL:
                     Description += '\nInstallation Instructions: {}'.format(ProvisioningInstructionsURL)
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
+                NewDescription = formatter(Description, filter_name='restructuredtext')
                 
                 resource = ResourceV3(
                             ID = myGLOBALURN,
