@@ -59,6 +59,7 @@ django.setup()
 from django.conf import settings as django_settings
 from django.db import DataError, IntegrityError
 from django.forms.models import model_to_dict
+from django_markup.markup import formatter
 from resource_v3.models import *
 from processing_status.process import ProcessingActivity
 
@@ -525,6 +526,8 @@ class Router():
                 for c in ['ContactURL', 'ContactEmail', 'ContactPhone']:
                     if c in item and item[c] is not None and item[c] is not '':
                         Description += '\n {} is {}'.format(c, item[c])
+#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
+                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -535,7 +538,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = None,
-                            Description = Description.strip(),
+                            Description = NewDescription,
                             Topics = 'Support',
                             Keywords = None,
                             Audience = self.Affiliation,
@@ -768,11 +771,13 @@ class Router():
                 
             try:
                 Description = item.get('Description', '').strip()
+                ShortDescription = Description[:1200].strip()
                 if item.get('VendorSoftwareURL'):
                     Description += '\nVendor Software URL: ' + item.get('VendorSoftwareURL')
                 if item.get('RelatedDiscussionForums'):
                     Description += '\nRelated Discussion Forum: ' + item.get('RelatedDiscussionForums')
-                ShortDescription = Description[:1200].strip()
+#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
+                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -783,7 +788,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = Description.strip(),
+                            Description = NewDescription,
                             Topics = None,
                             Keywords = item['Tags'],
                             Audience = self.Affiliation,
@@ -880,6 +885,8 @@ class Router():
                     Description += '\nVendor Software URL: {}'.format(item.get('VendorSoftwareURL'))
                 if item.get('VendorURL') and item.get('VendorSoftwareURL') and item.get('VendorURL') != item.get('VendorSoftwareURL'):
                     Description += '\nVendor URL: {}'.format(item.get('VendorURL'))
+#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
+                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -890,7 +897,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = item['Description'],
                             ProviderID = providerURN,
-                            Description = Description.strip(),
+                            Description = NewDescription,
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
@@ -1001,6 +1008,8 @@ class Router():
                     Description += '\nRunning on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID'])
                 except:
                     pass
+#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
+                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1011,7 +1020,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = Description.strip(),
+                            Description = NewDescription,
                             Topics = item['ServiceType'],
                             Keywords = Keywords,
                             Audience = self.Affiliation,
@@ -1104,6 +1113,8 @@ class Router():
                     Description += '\nVendor Product URL: {}'.format(item.get('VendorSoftwareURL'))
                 if item.get('VendorURL','') != item.get('VendorSoftwareURL', ''):
                     Description += '\nVendor URL: {}'.format(item.get('VendorURL'))
+#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
+                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
                 
                 resource = ResourceV3(
                             ID = myGLOBALURN,
@@ -1115,7 +1126,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = Description.strip(),
+                            Description = NewDescription,
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
@@ -1228,6 +1239,8 @@ class Router():
                         Keywords = item.get('Keywords')
                 else:
                     Keywords = None
+#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
+                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
                     
                 resource = ResourceV3(
                             ID = myGLOBALURN,
@@ -1239,7 +1252,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = Description.strip(),
+                            Description = NewDescription,
                             Topics = Domain,
                             Keywords = Keywords,
                             Audience = self.Affiliation,
@@ -1320,6 +1333,8 @@ class Router():
                 ProvisioningInstructionsURL = item.get('ProvisioningInstructionsURL')
                 if ProvisioningInstructionsURL:
                     Description += '\nInstallation Instructions: {}'.format(ProvisioningInstructionsURL)
+#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
+                NewDescription = formatter(Description.strip(), filter_name='restructuredtext')
                 
                 resource = ResourceV3(
                             ID = myGLOBALURN,
@@ -1331,7 +1346,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = item.get('Title','').strip(),
                             ProviderID = providerURN,
-                            Description = Description.strip(),
+                            Description = NewDescription,
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
