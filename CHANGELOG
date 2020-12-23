@@ -1,3 +1,10 @@
+tag-1.0-20201223 JP
+  - Generate full Description and no ShortDescription
+  - Implement Description construction and html rendering class
+  - Properly log markup warnings
+  - Have startup script(s) not overide the logging level set in the .conf by default
+  - Set default .conf logging level to 'error'
+
 tag-1.0-20201215 JP
   - Implement HTML in Description
 

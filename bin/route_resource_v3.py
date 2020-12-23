@@ -38,6 +38,7 @@ from collections import Counter
 from datetime import datetime, timezone, timedelta
 from hashlib import md5
 import http.client as httplib
+import io
 import json
 import logging
 import logging.handlers
@@ -72,6 +73,50 @@ import pdb
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
+class Format_Description():
+#   Initialize a Description, smart append, and render it in html using django-markup
+    def __init__(self, initial=None):
+        self.markup_stream = io.StringIO()
+        # Docutils settings
+        self.markup_settings = {'warning_stream': self.markup_stream }
+        if initial is None:
+            self.value = None
+        else:
+            clean_initial = initial.rstrip()
+            if len(clean_initial) == 0:
+                self.value = None
+            else:
+                self.value = clean_initial
+    def append(self, value):
+        clean_value = value.rstrip()
+        if len(clean_value) > 0:
+            if self.value is None:
+                self.value = clean_value
+            else:
+                self.value += '\n{}'.format(clean_value)
+    def html(self, ID=None):
+        if self.value is None:
+            return(None)
+        output = formatter(self.value, filter_name='restructuredtext', settings_overrides=self.markup_settings)
+        warnings = self.markup_stream.getvalue()
+        if warnings:
+            logger = logging.getLogger('DaemonLog')
+            if ID:
+                logger.warning('markup warnings for ID: {}'.format(ID))
+            for line in warnings.splitlines():
+                logger.warning('markup: {}'.format(line))
+        return(output)
+#    def format_Description(self, input, ID):
+#        output = formatter(input, filter_name='restructuredtext', settings_overrides=self.markup_settings)
+#        warnings = self.markup_stream.getvalue()
+#        if warnings:
+#            if ID:
+#                self.logger.warning('markup warnings for ID: {}'.format(ID))
+#            for line in warnings.splitlines():
+#                self.logger.warning('markup: {}'.format(line))
+#        return(output)
+    
+    
 class Router():
     # Initialization BEFORE we know if another self is running
     def __init__(self):
@@ -148,12 +193,12 @@ class Router():
 
         mode =  ('daemon,' if self.args.daemon else 'interactive,') + \
             ('once' if self.args.once else 'continuous')
-        self.logger.info('Starting mode=({}), program={}, pid={}, uid={}({})'.format(mode, os.path.basename(__file__), os.getpid(), os.geteuid(), pwd.getpwuid(os.geteuid()).pw_name))
+        self.logger.critical('Starting mode=({}), program={}, pid={}, uid={}({})'.format(mode, os.path.basename(__file__), os.getpid(), os.geteuid(), pwd.getpwuid(os.geteuid()).pw_name))
 
         # Connect Database
         configured_database = django_settings.DATABASES['default'].get('HOST', None)
         if configured_database:
-            self.logger.info('Warehouse database={}'.format(configured_database))
+            self.logger.critical('Warehouse database={}'.format(configured_database))
         # Django connects automatially as needed
 
         # Connect Elasticsearch
@@ -445,6 +490,8 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
+                ShortDescription = 'The {} Science Gateway Project'.format(item['Name'])
+                Description = Format_Description(item.get('Description'))
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -453,9 +500,9 @@ class Router():
                             Name = item['Name'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = 'The {} Science Gateway Project'.format(item['Name']),
+                            ShortDescription = ShortDescription,
                             ProviderID = None,
-                            Description = item['Description'],
+                            Description = Description.html(ID=myGLOBALURN),
                             Topics = item['FieldScience'],
                             Keywords = None,
                             Audience = self.Affiliation,
@@ -521,13 +568,12 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                ShortDescription = (item.get('Description', ''))
-                Description = ShortDescription
+                ShortDescription = None
+                Description = Format_Description(item.get('Description'))
                 for c in ['ContactURL', 'ContactEmail', 'ContactPhone']:
                     if c in item and item[c] is not None and item[c] is not '':
-                        Description += '\n {} is {}'.format(c, item[c])
+                        Description.append(' {} is {}'.format(c, item[c]))
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description, filter_name='restructuredtext')
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -538,7 +584,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = None,
-                            Description = NewDescription,
+                            Description = Description.html(ID=myGLOBALURN),
                             Topics = 'Support',
                             Keywords = None,
                             Audience = self.Affiliation,
@@ -599,6 +645,8 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
+                ShortDescription = None
+                Description = Format_Description(item.get('Description'))
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -607,9 +655,9 @@ class Router():
                             Name = item['Name'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = item.get('Description', '').strip(),
+                            ShortDescription = ShortDescription,
                             ProviderID = None,
-                            Description = None,
+                            Description = Description.html(ID=myGLOBALURN),
                             Topics = 'HPC',
                             Keywords = item['SiteID'],
                             Audience = self.Affiliation,
@@ -677,7 +725,8 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                ShortDescription = '{} operated by {}'.format(item['Name'],item['SiteName'])
+                ShortDescription = None
+                Description = Format_Description('{} operated by {}'.format(item['Name'], item['SiteName']))
                 Keywords = ','.join([item['SiteID'], item['ResourceID']])
                 resource = ResourceV3(
                             ID = myGLOBALURN,
@@ -689,7 +738,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = None,
+                            Description = Description.html(ID=myGLOBALURN),
                             Topics = 'HPC',
                             Keywords = Keywords,
                             Audience = self.Affiliation,
@@ -770,14 +819,13 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                Description = item.get('Description', '')
-                ShortDescription = Description[:1200].strip()
+                ShortDescription = None
+                Description = Format_Description(item.get('Description'))
                 if item.get('VendorSoftwareURL'):
-                    Description += '\nVendor Software URL: ' + item.get('VendorSoftwareURL')
+                    Description.append('Vendor Software URL: ' + item.get('VendorSoftwareURL'))
                 if item.get('RelatedDiscussionForums'):
-                    Description += '\nRelated Discussion Forum: ' + item.get('RelatedDiscussionForums')
+                    Description.append('Related Discussion Forum: ' + item.get('RelatedDiscussionForums'))
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description, filter_name='restructuredtext')
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -788,7 +836,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = NewDescription,
+                            Description = Description.html(ID=myGLOBALURN),
                             Topics = None,
                             Keywords = item['Tags'],
                             Audience = self.Affiliation,
@@ -875,18 +923,17 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                ShortDescription = (item.get('Description') or item.get('Title') or '').strip()
-                Description = ShortDescription
+                ShortDescription = None
+                Description = Format_Description(item.get('Description') or item.get('Title') or None)
                 if item.get('NetworkServiceEndpoints'):
-                    Description += '\nService Access URL: {}'.format(item.get('NetworkServiceEndpoints'))
+                    Description.append('Service Access URL: {}'.format(item.get('NetworkServiceEndpoints')))
                 if item.get('UserDocumentationURL'):
-                    Description += '\nService Documentation: {}'.format(item.get('UserDocumentationURL'))
+                    Description.append('Service Documentation: {}'.format(item.get('UserDocumentationURL')))
                 if item.get('VendorSoftwareURL') and item.get('NetworkServiceEndpoints') and item.get('VendorSoftwareURL') != item.get('NetworkServiceEndpoints'):
-                    Description += '\nVendor Software URL: {}'.format(item.get('VendorSoftwareURL'))
+                    Description.append('Vendor Software URL: {}'.format(item.get('VendorSoftwareURL')))
                 if item.get('VendorURL') and item.get('VendorSoftwareURL') and item.get('VendorURL') != item.get('VendorSoftwareURL'):
-                    Description += '\nVendor URL: {}'.format(item.get('VendorURL'))
+                    Description.append('Vendor URL: {}'.format(item.get('VendorURL')))
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description, filter_name='restructuredtext')
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -895,9 +942,9 @@ class Router():
                             Name = item['Title'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = item['Description'],
+                            ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = NewDescription,
+                            Description = Description.html(ID=myGLOBALURN),
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
@@ -964,21 +1011,21 @@ class Router():
                 continue
 
             if item['InterfaceName'] == 'org.globus.gridftp':
-                Name='GridFTP data transfer endpoint'
-                Description='Globus GridFTP data transfer endpoint'
-                Keywords='gridftp,data,transfer'
+                Name = 'GridFTP data transfer endpoint'
+                Description = Format_Description('Globus GridFTP data transfer endpoint')
+                Keywords = 'gridftp,data,transfer'
             elif item['InterfaceName'] == 'org.globus.openssh':
-                Name='GSI OpenSSH login service'
-                Description='Globus GSI OpenSSH remote login service'
-                Keywords='openssh,scp,ssh,login'
+                Name = 'GSI OpenSSH login service'
+                Description = Format_Description('Globus GSI OpenSSH remote login service')
+                Keywords = 'openssh,scp,ssh,login'
             elif item['InterfaceName'] == 'org.globus.gram':
-                Name='GRAM5 execution service'
-                Description='Globus GRAM5 remote execution service'
-                Keywords='gram5,job,execution'
+                Name = 'GRAM5 execution service'
+                Description = Format_Description('Globus GRAM5 remote execution service')
+                Keywords = 'gram5,job,execution'
             else:
-                Name=item['InterfaceName']
-                Description=item['ServiceType'] + ' ' + item['InterfaceName'] + ' ' + item['InterfaceVersion']
-                Keywords=''
+                Name = item['InterfaceName']
+                Description = Format_Description(item['ServiceType'] + ' ' + item['InterfaceName'] + ' ' + item['InterfaceVersion'])
+                Keywords = ''
             LocalURL = '{}/glue2-views-api/v1/services/ID/{}/'.format(self.WAREHOUSE_API_PREFIX, item['ID'])
 
             try:
@@ -1001,15 +1048,14 @@ class Router():
             new[myGLOBALURN] = local
                 
             try:
-                ShortDescription = Description
+                ShortDescription = None
                 if item.get('URL'):
-                    Description += '\nService URL: {}'.format(item.get('URL'))
+                    Description.append('Service URL: {}'.format(item.get('URL')))
                 try:
-                    Description += '\nRunning on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID'])
+                    Description.append('Running on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID']))
                 except:
                     pass
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description, filter_name='restructuredtext')
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1020,7 +1066,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = NewDescription,
+                            Description = Description.html(ID=myGLOBALURN),
                             Topics = item['ServiceType'],
                             Keywords = Keywords,
                             Audience = self.Affiliation,
@@ -1104,18 +1150,16 @@ class Router():
                 
             try:
                 ShortDescription = (item.get('VendorCommonName') or item.get('Title') or '').strip()
-                Description = (item.get('Description') or '')
+                Description = Format_Description(item.get('Description'))
                 if item.get('NetworkServiceEndpoints'):
-                    Description += '\nService URL: {}'.format(item.get('NetworkServiceEndpoints'))
+                    Description.append('Service URL: {}'.format(item.get('NetworkServiceEndpoints')))
                 if item.get('UserDocumentationURL'):
-                    Description += '\nService Documentation: {}'.format(item.get('UserDocumentationURL'))
+                    Description.append('Service Documentation: {}'.format(item.get('UserDocumentationURL')))
                 if item.get('VendorSoftwareURL','') != item.get('NetworkServiceEndpoints', ''):
-                    Description += '\nVendor Product URL: {}'.format(item.get('VendorSoftwareURL'))
+                    Description.append('Vendor Product URL: {}'.format(item.get('VendorSoftwareURL')))
                 if item.get('VendorURL','') != item.get('VendorSoftwareURL', ''):
-                    Description += '\nVendor URL: {}'.format(item.get('VendorURL'))
+                    Description.append('Vendor URL: {}'.format(item.get('VendorURL')))
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description, filter_name='restructuredtext')
-                
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1126,7 +1170,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = NewDescription,
+                            Description = Description.html(ID=myGLOBALURN),
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
@@ -1213,20 +1257,18 @@ class Router():
                 else:
                     QualityLevel = 'Production'
 
-                ShortDescription = (item.get('Description') or '').strip()
-                if not ShortDescription:
-                    ShortDescription = item.get('AppName','Missing Application Name').strip()
-                    if item.get('AppVersion'):
-                        ShortDescription += ' Version "{}"'.format(item['AppVersion'])
-                Description = ShortDescription
+                ShortDescription = item.get('AppName')
+                if item.get('AppVersion'):
+                    ShortDescription += ' Version {}'.format(item['AppVersion'])
+                Description = Format_Description(item.get('Description'))
                 try:
-                    Description += '\nRunning on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID'])
+                    Description.append('Running on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID']))
                 except:
                     pass
                 Handle = item.get('Handle')
                 if Handle:
                     if Handle.get('HandleType','').lower() == 'module' and Handle.get('HandleKey'):
-                        Description += '\nTo access from a shell use the command:\n\n  module load {}'.format(Handle.get('HandleKey'))
+                        Description.append('To access from a shell use the command:\n\n  module load {}'.format(Handle.get('HandleKey')))
 
                 if item.get('Domain'):
                     Domain = ','.join(item['Domain'])
@@ -1240,8 +1282,6 @@ class Router():
                 else:
                     Keywords = None
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description, filter_name='restructuredtext')
-                    
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1252,7 +1292,7 @@ class Router():
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = NewDescription,
+                            Description = Description.html(ID=myGLOBALURN),
                             Topics = Domain,
                             Keywords = Keywords,
                             Audience = self.Affiliation,
@@ -1322,20 +1362,19 @@ class Router():
             new[myGLOBALURN] = local
                 
             try: #TODO
-                Description = item.get('Description')
+                ShortDescription = item.get('Title','').strip()
+                Description = Format_Description(item.get('Description'))
                 TargetAudience = item.get('TargetAudience')
                 if TargetAudience:
-                    Description += '\nFor target audience: {}'.format(TargetAudience)
+                    Description.append('For target audience: {}'.format(TargetAudience))
                 PackageURL = item.get('PackageURL')
                 if PackageURL:
                     PackageFormat = '({})'.format(item.get('PackageFormat')) if item.get('PackageFormat') else ''
-                    Description += '\nPackage {} URL: {}'.format(PackageFormat, PackageURL)
+                    Description.append('Package {} URL: {}'.format(PackageFormat, PackageURL))
                 ProvisioningInstructionsURL = item.get('ProvisioningInstructionsURL')
                 if ProvisioningInstructionsURL:
-                    Description += '\nInstallation Instructions: {}'.format(ProvisioningInstructionsURL)
+                    Description.append('Installation Instructions: {}'.format(ProvisioningInstructionsURL))
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                NewDescription = formatter(Description, filter_name='restructuredtext')
-                
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1344,9 +1383,9 @@ class Router():
                             Name = item['VendorSoftwareCommonName'],
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
-                            ShortDescription = item.get('Title','').strip(),
+                            ShortDescription = ShortDescription,
                             ProviderID = providerURN,
-                            Description = NewDescription,
+                            Description = Description.html(ID=myGLOBALURN),
                             Topics = None,
                             Keywords = item['Keywords'],
                             Audience = self.Affiliation,
@@ -1426,6 +1465,8 @@ class Router():
                 # --------------------------------------------
                 # update ResourceV3 (standard) table
                 try:
+                    ShortDescription = None
+                    Description = Format_Description(orgs.get('organization_name'))
                     resource = ResourceV3(
                                 ID = myGLOBALURN,
                                 Affiliation = self.Affiliation,
@@ -1434,9 +1475,9 @@ class Router():
                                 Name = orgs['organization_name'],
                                 ResourceGroup = myRESGROUP,
                                 Type = myRESTYPE,
-                                ShortDescription = orgs.get('organization_name', '').strip(),
+                                ShortDescription = ShortDescription,
                                 ProviderID = None,
-                                Description = orgs['organization_name'],
+                                Description = Description.html(ID=myGLOBALURN),
                                 Topics = 'HPC, XSEDE',
                                 Keywords = orgs['organization_abbreviation'],
                                 Audience = self.Affiliation,
@@ -1558,7 +1599,7 @@ class Router():
             
             # For ShortDescription 
             ShortDescription = '{} ({}) provided by the {}'.format(item['resource_descriptive_name'], item['info_resourceid'], orgNames)
-
+            Description = Format_Description(item.get('resource_description'))
             try:
                 resource = ResourceV3(
                             ID = myGLOBALURN,
@@ -1571,7 +1612,7 @@ class Router():
                             ShortDescription = ShortDescription,
                             # pick the fitst, if contain multiple orgs
                             ProviderID = myProviderID,
-                            Description = item['resource_description'],
+                            Description = Description.html(ID=myGLOBALURN),
                             Topics = 'HPC',
                             Keywords = orgKeywords + ', XSEDE',
                             Audience = self.Affiliation,
@@ -1730,7 +1771,7 @@ class Router():
                         
                         # For ShortDescription
                         ShortDescription = '{} ({}) provided by the {}'.format(sub['resource_descriptive_name'], sub['info_resourceid'], orgNames)
-
+                        Description = Format_Description(sub.get('resource_description'))
                         try:
                             resource = ResourceV3(
                                         ID = myGLOBALURN,
@@ -1743,7 +1784,7 @@ class Router():
                                         ShortDescription = ShortDescription,
                                         # pick the fitst, if contain multiple orgs
                                         ProviderID = myProviderID,
-                                        Description = sub['resource_description'],
+                                        Description = Description.html(ID=myGLOBALURN),
                                         Topics = topics,
                                         Keywords = orgKeywords + ', XSEDE',
                                         Audience = self.Affiliation,

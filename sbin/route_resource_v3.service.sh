@@ -3,7 +3,7 @@ do_start () {
     echo -n "Starting ${APP_NAME}:"
     export LD_LIBRARY_PATH=${PYTHON_BASE}/lib
     source ${PIPENV_BASE}/bin/activate
-    exec ${PYTHON_BIN} ${APP_BIN} --daemon -l info $@ ${APP_OPTS}
+    exec ${PYTHON_BIN} ${APP_BIN} --daemon $@ ${APP_OPTS}
     RETVAL=$?
 }
 do_debug () {
