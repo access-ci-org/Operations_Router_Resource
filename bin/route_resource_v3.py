@@ -94,7 +94,9 @@ class Format_Description():
                 self.value = clean_value
             else:
                 self.value += '\n{}'.format(clean_value)
-    def html(self, ID=None):
+    def blank_line(self): # Forced blank line used to start a markup list
+        self.value += '\n'
+    def html(self, ID=None): # If an ID is provided, log it to record what resource had the warnings
         if self.value is None:
             return(None)
         output = formatter(self.value, filter_name='restructuredtext', settings_overrides=self.markup_settings)
@@ -203,7 +205,7 @@ class Router():
 
         # Connect Elasticsearch
         if 'ELASTIC_HOSTS' in self.config:
-            self.logger.info('Warehouse elastichost={}'.format(self.config['ELASTIC_HOSTS']))
+            self.logger.critical('Warehouse elastichost={}'.format(self.config['ELASTIC_HOSTS']))
             self.ESEARCH = elasticsearch_dsl.connections.create_connection( \
                 hosts = self.config['ELASTIC_HOSTS'], \
                 connection_class = RequestsHttpConnection, \
@@ -570,9 +572,10 @@ class Router():
             try:
                 ShortDescription = None
                 Description = Format_Description(item.get('Description'))
+                Description.blank_line()
                 for c in ['ContactURL', 'ContactEmail', 'ContactPhone']:
                     if c in item and item[c] is not None and item[c] is not '':
-                        Description.append(' {} is {}'.format(c, item[c]))
+                        Description.append('- {} is {}'.format(c, item[c]))
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
                 resource = ResourceV3(
                             ID = myGLOBALURN,
@@ -821,10 +824,11 @@ class Router():
             try:
                 ShortDescription = None
                 Description = Format_Description(item.get('Description'))
+                Description.blank_line()
                 if item.get('VendorSoftwareURL'):
-                    Description.append('Vendor Software URL: ' + item.get('VendorSoftwareURL'))
+                    Description.append('- Vendor Software URL: ' + item.get('VendorSoftwareURL'))
                 if item.get('RelatedDiscussionForums'):
-                    Description.append('Related Discussion Forum: ' + item.get('RelatedDiscussionForums'))
+                    Description.append('- Related Discussion Forum: ' + item.get('RelatedDiscussionForums'))
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
                 resource = ResourceV3(
                             ID = myGLOBALURN,
@@ -925,14 +929,15 @@ class Router():
             try:
                 ShortDescription = None
                 Description = Format_Description(item.get('Description') or item.get('Title') or None)
+                Description.blank_line()
                 if item.get('NetworkServiceEndpoints'):
-                    Description.append('Service Access URL: {}'.format(item.get('NetworkServiceEndpoints')))
+                    Description.append('- Service Access URL: {}'.format(item.get('NetworkServiceEndpoints')))
                 if item.get('UserDocumentationURL'):
-                    Description.append('Service Documentation: {}'.format(item.get('UserDocumentationURL')))
+                    Description.append('- Service Documentation: {}'.format(item.get('UserDocumentationURL')))
                 if item.get('VendorSoftwareURL') and item.get('NetworkServiceEndpoints') and item.get('VendorSoftwareURL') != item.get('NetworkServiceEndpoints'):
-                    Description.append('Vendor Software URL: {}'.format(item.get('VendorSoftwareURL')))
+                    Description.append('- Vendor Software URL: {}'.format(item.get('VendorSoftwareURL')))
                 if item.get('VendorURL') and item.get('VendorSoftwareURL') and item.get('VendorURL') != item.get('VendorSoftwareURL'):
-                    Description.append('Vendor URL: {}'.format(item.get('VendorURL')))
+                    Description.append('- Vendor URL: {}'.format(item.get('VendorURL')))
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
                 resource = ResourceV3(
                             ID = myGLOBALURN,
@@ -1049,10 +1054,11 @@ class Router():
                 
             try:
                 ShortDescription = None
+                Description.blank_line()
                 if item.get('URL'):
-                    Description.append('Service URL: {}'.format(item.get('URL')))
+                    Description.append('- Service URL: {}'.format(item.get('URL')))
                 try:
-                    Description.append('Running on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID']))
+                    Description.append('- Running on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID']))
                 except:
                     pass
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
@@ -1151,14 +1157,15 @@ class Router():
             try:
                 ShortDescription = (item.get('VendorCommonName') or item.get('Title') or '').strip()
                 Description = Format_Description(item.get('Description'))
+                Description.blank_line()
                 if item.get('NetworkServiceEndpoints'):
-                    Description.append('Service URL: {}'.format(item.get('NetworkServiceEndpoints')))
+                    Description.append('- Service URL: {}'.format(item.get('NetworkServiceEndpoints')))
                 if item.get('UserDocumentationURL'):
-                    Description.append('Service Documentation: {}'.format(item.get('UserDocumentationURL')))
+                    Description.append('- Service Documentation: {}'.format(item.get('UserDocumentationURL')))
                 if item.get('VendorSoftwareURL','') != item.get('NetworkServiceEndpoints', ''):
-                    Description.append('Vendor Product URL: {}'.format(item.get('VendorSoftwareURL')))
+                    Description.append('- Vendor Product URL: {}'.format(item.get('VendorSoftwareURL')))
                 if item.get('VendorURL','') != item.get('VendorSoftwareURL', ''):
-                    Description.append('Vendor URL: {}'.format(item.get('VendorURL')))
+                    Description.append('- Vendor URL: {}'.format(item.get('VendorURL')))
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
                 resource = ResourceV3(
                             ID = myGLOBALURN,
@@ -1368,12 +1375,13 @@ class Router():
                 if TargetAudience:
                     Description.append('For target audience: {}'.format(TargetAudience))
                 PackageURL = item.get('PackageURL')
+                Description.blank_line()
                 if PackageURL:
                     PackageFormat = '({})'.format(item.get('PackageFormat')) if item.get('PackageFormat') else ''
-                    Description.append('Package {} URL: {}'.format(PackageFormat, PackageURL))
+                    Description.append('- Package {} URL: {}'.format(PackageFormat, PackageURL))
                 ProvisioningInstructionsURL = item.get('ProvisioningInstructionsURL')
                 if ProvisioningInstructionsURL:
-                    Description.append('Installation Instructions: {}'.format(ProvisioningInstructionsURL))
+                    Description.append('- Installation Instructions: {}'.format(ProvisioningInstructionsURL))
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
                 resource = ResourceV3(
                             ID = myGLOBALURN,
