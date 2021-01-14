@@ -1421,7 +1421,7 @@ class Router():
     #####################################################################
     # Function for loading RDR (Resource Description Repository) data
     # Load RDR's organization data to ResourceV3 tables (local, standard)
-    # This function populates self.RDRPROVIDER_URNMAP
+    # This function clears and re-populates self.RDRPROVIDER_URNMAP in each iteration
     #
     def Write_RDR_Providers(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
@@ -1431,6 +1431,7 @@ class Router():
         self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
         localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/organizations/'
 
+        self.RDRPROVIDER_URNMAP = {}    # Clear
         cur = {}   # Current items
         new = {}   # New items
         # get existing organization data from local table
@@ -1497,8 +1498,6 @@ class Router():
                     msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                     self.logger.error(msg)
                     return(False, msg)
-                
-
             
             self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
             self.STATS.update({me + '.Update'})
