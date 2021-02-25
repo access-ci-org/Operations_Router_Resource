@@ -406,10 +406,11 @@ class Router():
     #
     def Delete_OLD(self, me, cur, new):
         for URN in [id for id in cur if id not in new]:
-            try:
-                ResourceV3Index.get(id = URN).delete()
-            except Exception as e:
-                self.logger.error('{} deleting Elastic id={}: {}'.format(type(e).__name__, URN, e))
+            if self.ESEARCH:
+                try:
+                    ResourceV3Index.get(id = URN).delete()
+                except Exception as e:
+                    self.logger.error('{} deleting Elastic id={}: {}'.format(type(e).__name__, URN, e))
             try:
                 ResourceV3Relation.objects.filter(FirstResourceID__exact = URN).delete()
                 ResourceV3.objects.get(pk = URN).delete()
@@ -454,6 +455,44 @@ class Router():
             self.PROCESSING_SECONDS[me],
             self.STATS[me + '.Update'], self.STATS[me + '.Delete'], self.STATS[me + '.Skip'])
         self.logger.info(summary_msg)
+    #
+    # Determine which RDR resources are active
+    #
+    def Is_Active_RDR(self, allresources, organization=None, resource=None):
+        if not hasattr(self, 'RDRACTIVEORGANIZATIONS') or not hasattr(self, 'RDRACTIVERESOURCES'):
+            self.Identity_RDRACTIVE(allresources)
+        if organization and organization in self.RDRACTIVEORGANIZATIONS:
+            return(True)
+        if resource and resource in self.RDRACTIVERESOURCES:
+            return(True)
+        return(False)
+    #
+    # Parallels the filter in django_xsede_warehouse/rdr_db.filters.py except:
+    # - All provider_levels
+    # - Doesn't have to be allocated
+    #
+    def Identity_RDRACTIVE(self, allresources):
+        active_status_set = set(['friendly', 'coming soon', 'pre-production', 'production', 'post-production'])
+        exclude_resourceid_set = set(['stand-alone.tg.teragrid.org', 'futuregrid0.futuregrid.xsede.org', 'Abe-QB-Grid.teragrid.org'])
+        self.RDRACTIVEORGANIZATIONS = {}        # Keyed by organization_id
+        self.RDRACTIVERESOURCES = {}            # Keyed by info_resourceid
+        for baseresource in allresources:
+            if baseresource['project_affiliation'] != 'XSEDE' or \
+                    baseresource['xsede_services_only'] or \
+                    baseresource['info_resourceid'] in exclude_resourceid_set or \
+                    not list(set(baseresource['current_statuses']) & active_status_set):        # This finds the intersection
+                continue
+            for subtype in ['compute_resources', 'storage_resources']:
+                if subtype not in baseresource:
+                    continue
+                for subresource in baseresource[subtype]:       # This is a list
+                    if not list(set(subresource['current_statuses']) & active_status_set):      # This finds the intersection
+                        continue
+                    # We now have an active sub-resource, add it, its baseresource, and its organizations
+                    self.RDRACTIVERESOURCES[subresource['info_resourceid']] = True
+                    self.RDRACTIVERESOURCES[baseresource['info_resourceid']] = True
+                    for org in baseresource['organizations']:
+                        self.RDRACTIVEORGANIZATIONS[org['organization_id']] = True
     #
     # This function populates self.GWPROVIDER_URNMAP
     #
@@ -1441,6 +1480,8 @@ class Router():
         for item in content[contype]['resources'] :
             # Support multiple organiztion cases 
             for orgs in item['organizations']:
+                if not self.Is_Active_RDR(content[contype]['resources'], organization=orgs['organization_id']):
+                    continue
                 myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(orgs['organization_id']))
 
                 # Skip if this org already processed
@@ -1528,6 +1569,8 @@ class Router():
             cur[item.ID] = item
         
         for item in content[contype]['resources'] :
+            if not self.Is_Active_RDR(content[contype]['resources'], resource=item['info_resourceid']):
+                continue
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(item['resource_id']))
 
             # --------------------------------------------
@@ -1666,6 +1709,8 @@ class Router():
 
         subNameList=['compute_resources', 'storage_resources', 'other_resources', 'grid_resources']
         for item in content[contype]['resources'] :
+            if not self.Is_Active_RDR(content[contype]['resources'], resource=item['info_resourceid']):
+                continue
             # iterate different types of sub-resource
             for subName in subNameList:
                 localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/' + subName + '/id/' 

@@ -1,3 +1,6 @@
+tag-1.0-20210224 JP
+  - Filter out inactive RDR resources, related base resources, and unreferenced organizations (XCI-831)
+
 tag-1.0-20210114 JP
   - Fix RDR Organization load
 
