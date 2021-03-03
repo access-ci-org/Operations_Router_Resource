@@ -1,3 +1,7 @@
+tag-1.0-20210302 JP
+  - Add User Guide URL and Organization URLs to the Description
+  - Place public_url in LocalURL if available for both base and sub-resources
+
 tag-1.0-20210224 JP
   - Filter out inactive RDR resources, related base resources, and unreferenced organizations (XCI-831)
 

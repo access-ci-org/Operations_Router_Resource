@@ -95,7 +95,8 @@ class Format_Description():
             else:
                 self.value += '\n{}'.format(clean_value)
     def blank_line(self): # Forced blank line used to start a markup list
-        self.value += '\n'
+        if self.value:  # If we have a value
+            self.value += '\n'
     def html(self, ID=None): # If an ID is provided, log it to record what resource had the warnings
         if self.value is None:
             return(None)
@@ -473,13 +474,13 @@ class Router():
     #
     def Identity_RDRACTIVE(self, allresources):
         active_status_set = set(['friendly', 'coming soon', 'pre-production', 'production', 'post-production'])
-        exclude_resourceid_set = set(['stand-alone.tg.teragrid.org', 'futuregrid0.futuregrid.xsede.org', 'Abe-QB-Grid.teragrid.org'])
+        excluded_resourceid_set = set(['stand-alone.tg.teragrid.org', 'futuregrid0.futuregrid.xsede.org', 'Abe-QB-Grid.teragrid.org'])
         self.RDRACTIVEORGANIZATIONS = {}        # Keyed by organization_id
         self.RDRACTIVERESOURCES = {}            # Keyed by info_resourceid
         for baseresource in allresources:
             if baseresource['project_affiliation'] != 'XSEDE' or \
                     baseresource['xsede_services_only'] or \
-                    baseresource['info_resourceid'] in exclude_resourceid_set or \
+                    baseresource['info_resourceid'] in excluded_resourceid_set or \
                     not list(set(baseresource['current_statuses']) & active_status_set):        # This finds the intersection
                 continue
             for subtype in ['compute_resources', 'storage_resources']:
@@ -1597,7 +1598,9 @@ class Router():
             supportURN = self.SUPPORTPROVIDER_URNMAP.get('helpdesk.xsede.org', None)
             if supportURN:
                 myNEWRELATIONS[supportURN] = 'Supported By'
-       
+
+            LocalURL = item.get('public_url', (localUrlPrefix + str(item['resource_id'])) )
+
             # --------------------------------------------
             # update ResourceV3 (local) table
             try:
@@ -1608,7 +1611,7 @@ class Router():
                             Affiliation = self.Affiliation,
                             LocalID = str(item['resource_id']),
                             LocalType = 'base-resource',
-                            LocalURL = localUrlPrefix + str(item['resource_id']),
+                            LocalURL = LocalURL,
                             CatalogMetaURL = self.CATALOGURN_to_URL(config['CATALOGURN']),
                             EntityJSON = item,
                         )
@@ -1631,7 +1634,7 @@ class Router():
                 qualityLevel = 'Production'
             elif 'pre-production' in item['current_statuses']:
                 qualityLevel = 'Testing'
-            else: # should not be here if currentStatueses is correct
+            else: # should not be here if currentStatuses is correct
                 qualityLevel = 'Retired'
 
             # For Keywords, get comma seperated org-abbrev for multiple orgs.
@@ -1753,7 +1756,10 @@ class Router():
                         # Support multiple organiztion cases for relation table update,but set
                         # only the first organization for ProviderID of standard table 
                         myProviderID = None
+                        org_urls = []       # Save to include in Description
                         for orgs in item['organizations']:
+                            if orgs.get('organization_url'):
+                                org_urls.append(orgs['organization_url'])
                             orgURN = self.RDRPROVIDER_URNMAP.get(orgs.get('organization_id', ''), None)
                             if orgURN:
                                 # save only the first provider
@@ -1771,6 +1777,7 @@ class Router():
                         if supportURN:
                             myNEWRELATIONS[supportURN] = 'Supported By'
 
+                        LocalURL = item.get('public_url', (localUrlPrefix + subID) )
 
                         # --------------------------------------------
                         # update ResourceV3 (local) table
@@ -1782,7 +1789,7 @@ class Router():
                                         Affiliation = self.Affiliation,
                                         LocalID = subID, 
                                         LocalType = localType,
-                                        LocalURL = localUrlPrefix + subID, 
+                                        LocalURL = LocalURL,
                                         CatalogMetaURL = self.CATALOGURN_to_URL(config['CATALOGURN']),
                                         EntityJSON = sub,
                                     )
@@ -1824,6 +1831,11 @@ class Router():
                         # For ShortDescription
                         ShortDescription = '{} ({}) provided by the {}'.format(sub['resource_descriptive_name'], sub['info_resourceid'], orgNames)
                         Description = Format_Description(sub.get('resource_description'))
+                        Description.blank_line()
+                        if sub.get('user_guide_url'):
+                            Description.append('- User Guide URL: {}'.format(sub.get('user_guide_url')))
+                        for url in org_urls:
+                            Description.append('- Organization web site: {}'.format(url))
                         try:
                             resource = ResourceV3(
                                         ID = myGLOBALURN,
