@@ -871,10 +871,10 @@ class Router():
                 supportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1565'
             elif item.get('Vendor') == 'XSEDE':
                 supportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1553'
-                providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:hpc.providers:drupalnodeid:2943'
+                providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rdr:resource.organizations:2438'
             elif item.get('Vendor') == 'NCSA':
                 supportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1553'
-                providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:hpc.providers:drupalnodeid:3671'
+                providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rdr:resource.organizations:844'
             if supportURN:
                 myNEWRELATIONS[supportURN] = 'Supported By'
             if providerURN:
@@ -1430,7 +1430,7 @@ class Router():
             myNEWRELATIONS = {}
             mySupportOrgID = item.get('SupportOrganizationGlobalID','')
             if mySupportOrgID == 'helpdesk.xsede.org':
-                providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:hpc.providers:drupalnodeid:2943'
+                providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rdr:resource.organizations:2438'
                 myNEWRELATIONS[providerURN] = 'Provided By'
             else: # TODO: Handle other Support Orgs
                 providerURN = None
