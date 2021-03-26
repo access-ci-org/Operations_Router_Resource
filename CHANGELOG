@@ -1,3 +1,10 @@
+tag-1.1-20210326 JP
+  - Stop loading RSP HPC Providers and HPC Resources into Resource V3
+  - Replace references to RSP HPC Providers and HPC Resources with RDR Organization and Resources
+  - Implement Format_Description processing that supports initial html values
+  - Improve some generated descriptions
+  - Fix config (Ansible) Glue2 URNPREFIX
+
 tag-1.0-20210302 JP
   - Add User Guide URL and Organization URLs to the Description
   - Place public_url in LocalURL if available for both base and sub-resources

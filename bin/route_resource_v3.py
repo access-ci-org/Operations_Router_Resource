@@ -74,33 +74,42 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 class Format_Description():
-#   Initialize a Description, smart append, and render it in html using django-markup
-    def __init__(self, initial=None):
+#   Initialize a Description that may be html or markup text
+#   Functions that append markup
+#   Finally convert everything to html using django-markup (don't convert initial if it's already html)
+    def __init__(self, value):
         self.markup_stream = io.StringIO()
-        # Docutils settings
-        self.markup_settings = {'warning_stream': self.markup_stream }
-        if initial is None:
-            self.value = None
-        else:
-            clean_initial = initial.rstrip()
-            if len(clean_initial) == 0:
-                self.value = None
-            else:
-                self.value = clean_initial
+        self.markup_settings = {'warning_stream': self.markup_stream } # Docutils settings
+        self.initial = None
+        self.added = None
+        if value is None:
+            return
+        clean_value = value.rstrip()
+        if len(clean_value) == 0:
+            return
+        self.initial = clean_value
     def append(self, value):
         clean_value = value.rstrip()
         if len(clean_value) > 0:
-            if self.value is None:
-                self.value = clean_value
+            if self.added is None:
+                self.added = clean_value
             else:
-                self.value += '\n{}'.format(clean_value)
+                self.added += '\n{0}'.format(clean_value)
     def blank_line(self): # Forced blank line used to start a markup list
-        if self.value:  # If we have a value
-            self.value += '\n'
+        if self.initial or self.added:  # If we have something, prevents blank initial line
+            if self.added:
+                self.added += '\n'
+            else:
+                self.added = '\n'
     def html(self, ID=None): # If an ID is provided, log it to record what resource had the warnings
-        if self.value is None:
+        if self.initial is None and self.added is None:
             return(None)
-        output = formatter(self.value, filter_name='restructuredtext', settings_overrides=self.markup_settings)
+        initial_html = self.initial and self.initial[:1] == '<'
+        if initial_html:
+            formatin = '%%INITIAL%%{0}'.format(self.added)
+        else:
+            formatin = '{0}{1}'.format(self.initial or '', self.added)
+        formatout = formatter(formatin, filter_name='restructuredtext', settings_overrides=self.markup_settings)
         warnings = self.markup_stream.getvalue()
         if warnings:
             logger = logging.getLogger('DaemonLog')
@@ -108,17 +117,11 @@ class Format_Description():
                 logger.warning('markup warnings for ID: {}'.format(ID))
             for line in warnings.splitlines():
                 logger.warning('markup: {}'.format(line))
+        if initial_html:
+            output = formatout.replace('%%INITIAL%%', self.initial, 1)
+        else:
+            output = formatout
         return(output)
-#    def format_Description(self, input, ID):
-#        output = formatter(input, filter_name='restructuredtext', settings_overrides=self.markup_settings)
-#        warnings = self.markup_stream.getvalue()
-#        if warnings:
-#            if ID:
-#                self.logger.warning('markup warnings for ID: {}'.format(ID))
-#            for line in warnings.splitlines():
-#                self.logger.warning('markup: {}'.format(line))
-#        return(output)
-    
     
 class Router():
     # Initialization BEFORE we know if another self is running
@@ -224,24 +227,23 @@ class Router():
         self.memory = {}                        # Used to put information in "memory"
         self.Affiliation = 'xsede.org'
         self.DefaultValidity = timedelta(days = 14)
-        self.memory['gateway_urnmap'] = {}       # Mapping of Gateway Name to its GLOBALURN
-        self.GWPROVIDER_URNMAP = self.memory['gateway_urnmap']
-        self.memory['support_urnmap'] = {}       # Mapping of Support GlobalID to its GLOBALURN
-        self.SUPPORTPROVIDER_URNMAP = self.memory['support_urnmap']
-        self.memory['support_url2urn'] = {}      # Mapping of Support GlobalID to its Information Services URL
-        self.SUPPORTPROVIDER_URL2URN = self.memory['support_url2urn']
-        self.memory['sp_urnmap'] = {}            # Mapping of SiteID to its GLOBALURN
-        self.HPCPROVIDER_URNMAP = self.memory['sp_urnmap']
-        self.memory['hpc_urnmap'] = {}           # Mapping of ResourceID to its GLOBALURN
-        self.HPCRESOURCE_URNMAP = self.memory['hpc_urnmap']
-        self.memory['hpc_detail'] = {}           # Resource detail by ResourceID
-        self.HPCRESOURCE_INFO = self.memory['hpc_detail']
-        self.memory['rdrsp_urnmap'] = {}           # Mapping of RDR organization id to its GLOBALURN
-        self.RDRPROVIDER_URNMAP = self.memory['rdrsp_urnmap']
-        self.memory['rdrbase_urnmap'] = {}      # Mapping of RDR base-resource id to its GLOBALURN
-        self.RDRRESOURCE_BASE_URNMAP = self.memory['rdrbase_urnmap']
-        self.memory['rdrsub_urnmap'] = {}      # Mapping of RDR sub-resource id to its GLOBALURN
-        self.RDRRESOURCE_SUB_URNMAP = self.memory['rdrsub_urnmap']
+
+        self.GWPROVIDER_URNMAP = {}             # Mapping of Gateway Name to its GLOBALURN
+        self.SUPPORTPROVIDER_URNMAP = {}        # Mapping of Support GlobalID to its GLOBALURN
+        self.SUPPORTPROVIDER_URL2URN = {}       # Mapping of Support GlobalID to its Information Services URL
+
+        # HPC PROVIDER ORGANIZATION maps
+        self.RSP_HPCPROVIDER_URNMAP = {}        # SiteID to GLOBALURN from RSP
+        self.RDR_HPCPROVIDER_URNMAP = {}        # Organization ID to GLOBALURN from RDR
+
+        # HPC RESOURCE maps from ResourceID to a GLOBALRUN
+        self.RSP_HPCRESOURCE_URNMAP = {}        # Original from RSP
+        self.RDR_HPCRESOURCE_URNMAP = {}        # Replacement from RDR
+
+        self.RSP_HPCRESOURCE_INFO = {}              # Resource detail by ResourceID
+        self.RDRRESOURCE_BASE_URNMAP = {}       # Mapping of RDR base-resource id to its GLOBALURN
+        self.RDRRESOURCE_INFOID_URNMAP = {}     # Mapping of RDR base-resource infoid to its GLOBALURN
+        self.RDRRESOURCE_SUB_URNMAP = {}        # Mapping of RDR sub-resource id to its GLOBALURN
         if self.args.dev:
             self.WAREHOUSE_API_PREFIX = 'http://localhost:8000'
         else:
@@ -616,7 +618,6 @@ class Router():
                 for c in ['ContactURL', 'ContactEmail', 'ContactPhone']:
                     if c in item and item[c] is not None and item[c] is not '':
                         Description.append('- {} is {}'.format(c, item[c]))
-#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -651,7 +652,8 @@ class Router():
         
     ####################################
     #
-    # This function populates self.HPCPROVIDER_URNMAP
+    # This function populates self.RSP_HPCPROVIDER_URNMAP
+    # Obselete on 03-25-2021 as we replace RSP Providers with RDR Providers
     #
     def Write_RSP_HPC_Providers(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
@@ -667,7 +669,7 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            self.HPCPROVIDER_URNMAP[item['SiteID']] = myGLOBALURN
+            self.RSP_HPCPROVIDER_URNMAP[item['SiteID']] = myGLOBALURN
             try:
                 local = ResourceV3Local(
                             ID = myGLOBALURN,
@@ -724,8 +726,25 @@ class Router():
 
     ####################################
     #
-    # This function populates self.HPCRESOURCE_URNMAP and self.HPCRESOURCE_INFO
-    # TODO: Convert to load from RDR
+    # This function populates self.RSP_HPCPROVIDER_URNMAP
+    # Replaces on 03-25-2021 Write_RSP_HPC_Providers
+    #
+    def Memory_RSP_HPC_Providers(self, content, contype, config):
+        start_utc = datetime.now(timezone.utc)
+        me = '{} to RSP_HPCPROVIDER_URNMAP'.format(sys._getframe().f_code.co_name)
+        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
+
+        for item in content[contype]:
+            self.RSP_HPCPROVIDER_URNMAP[item['SiteID']] = item.get('GlobalResourceID')
+            self.STATS.update({me + '.Update'})
+        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
+        self.Log_STEP(me)
+        return(0, '')
+
+    ####################################
+    #
+    # This function populates self.RSP_HPCRESOURCE_URNMAP and self.RSP_HPCRESOURCE_INFO
+    # Obselete on 03-25-2021 as we replace RSP Resources with RDR Resources
     #
     def Write_RSP_HPC_Resources(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
@@ -741,11 +760,12 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            self.HPCRESOURCE_URNMAP[item['ResourceID']] = myGLOBALURN
-            self.HPCRESOURCE_INFO[item['ResourceID']] = item
+            self.RSP_HPCRESOURCE_URNMAP[item['ResourceID']] = myGLOBALURN
+            self.RSP_HPCRESOURCE_INFO[item['ResourceID']] = item
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
-            providerURN = self.HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
+            providerURN = self.RSP_HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
+#            providerURN = self.RDR_HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
             if providerURN:
                 myNEWRELATIONS[providerURN] = 'Provided By'
             try:
@@ -800,6 +820,24 @@ class Router():
             self.STATS.update({me + '.Update'})
 
         self.Delete_OLD(me, cur, new)
+
+        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
+        self.Log_STEP(me)
+        return(0, '')
+
+    ####################################
+    #
+    # This function populates self.RSP_HPCRESOURCE_INFO
+    # Replaces on 03-25-2021 Write_RSP_HPC_Providers
+    #
+    def Memory_RSP_HPC_Resources(self, content, contype, config):
+        start_utc = datetime.now(timezone.utc)
+        me = '{} to RSP_HPCRESOURCE_INFO'.format(sys._getframe().f_code.co_name)
+        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
+
+        for item in content[contype]:
+            self.RSP_HPCRESOURCE_INFO[item['ResourceID']] = item
+            self.STATS.update({me + '.Update'})
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
         self.Log_STEP(me)
@@ -931,12 +969,16 @@ class Router():
             # Items can have HostingResourceID and related SiteID, ScienceGatewayName, SupportOrganizationGlobalID
             # Set relations: Gateway Integrated, Hosted On, Supported By
             gatewayURN = self.GWPROVIDER_URNMAP.get(item.get('ScienceGatewayName', ''), None)
-            siteURN = self.HPCPROVIDER_URNMAP.get(item.get('SiteID', ''), None)
-            resourceURN = self.HPCRESOURCE_URNMAP.get(item.get('HostingResourceID', ''), None)
+            siteURN = self.RSP_HPCPROVIDER_URNMAP.get(item.get('SiteID', ''), None)
+#            siteURN = self.RDR_HPCPROVIDER_URNMAP.get(item.get('SiteID', ''), None)
+#            resourceURN = self.RSP_HPCRESOURCE_URNMAP.get(item.get('HostingResourceID', ''), None)
+            resourceURN = self.RDR_HPCRESOURCE_URNMAP.get(item.get('HostingResourceID', ''), None)
             supportURN = self.SUPPORTPROVIDER_URNMAP.get(item.get('SupportOrganizationGlobalID', ''), None)
 
-            providerURNxsede = self.HPCPROVIDER_URNMAP.get('xsede.org', None) \
+            providerURNxsede = self.RSP_HPCPROVIDER_URNMAP.get('xsede.org', None) \
                 if item.get('SupportOrganizationGlobalID', '') == 'helpdesk.xsede.org' else None
+#            providerURNxsede = self.RDR_HPCPROVIDER_URNMAP.get('xsede.org', None) \
+#                if item.get('SupportOrganizationGlobalID', '') == 'helpdesk.xsede.org' else None
             # ProviderID priority order of Gateway, (SP) Site, or XSEDE (if supported by XSEDE)
             providerURN = gatewayURN or siteURN or providerURNxsede
             if providerURN:
@@ -1034,14 +1076,16 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
-            if not self.HPCRESOURCE_INFO.get(item['ResourceID']):
+            if not self.RSP_HPCRESOURCE_INFO.get(item['ResourceID']):
                 msg = 'Undefined ResourceID={} in Local ID={}'.format(item['ResourceID'], myGLOBALURN)
                 self.logger.error(msg)
                 break
                 
-            mySiteID = self.HPCRESOURCE_INFO.get(item['ResourceID'])['SiteID']
-            providerURN = self.HPCPROVIDER_URNMAP[mySiteID]
-            myResourceURN = self.HPCRESOURCE_URNMAP.get(item['ResourceID'])
+            mySiteID = self.RSP_HPCRESOURCE_INFO.get(item['ResourceID'])['SiteID']
+            providerURN = self.RSP_HPCPROVIDER_URNMAP[mySiteID]
+#            providerURN = self.RDR_HPCPROVIDER_URNMAP.get(mySiteID)
+#            myResourceURN = self.RSP_HPCRESOURCE_URNMAP.get(item['ResourceID'])
+            myResourceURN = self.RDR_HPCRESOURCE_URNMAP.get(item['ResourceID'])
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
             if providerURN:
@@ -1098,7 +1142,7 @@ class Router():
                 if item.get('URL'):
                     Description.append('- Service URL: {}'.format(item.get('URL')))
                 try:
-                    Description.append('- Running on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID']))
+                    Description.append('- Running on {} ({})'.format(self.RSP_HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID']))
                 except:
                     pass
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
@@ -1156,7 +1200,8 @@ class Router():
                 
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
-            myHostedID = self.HPCRESOURCE_URNMAP.get(item['HostingResourceID'],'')
+#            myHostedID = self.RSP_HPCRESOURCE_URNMAP.get(item['HostingResourceID'],'')
+            myHostedID = self.RDR_HPCRESOURCE_URNMAP.get(item['HostingResourceID'],'')
             if myHostedID:
                 myNEWRELATIONS[myHostedID] = 'Hosted On'
             
@@ -1166,7 +1211,8 @@ class Router():
                 if myGatewayID:
                     myNEWRELATIONS[myGatewayID] = 'Accessible From'
 
-            providerURN = myGatewayID or self.HPCPROVIDER_URNMAP.get(item['HostingResourceID'].split('.', 1)[1],'')
+            providerURN = myGatewayID or self.RSP_HPCPROVIDER_URNMAP.get(item['HostingResourceID'].split('.', 1)[1],'')
+#            providerURN = myGatewayID or self.RDR_HPCPROVIDER_URNMAP.get(item['HostingResourceID'].split('.', 1)[1],'')
             if providerURN:
                 myNEWRELATIONS[providerURN] = 'Provided By'
             
@@ -1256,8 +1302,10 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
-            providerURN = self.HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
-            myResourceURN = self.HPCRESOURCE_URNMAP.get(item['ResourceID'])
+            providerURN = self.RSP_HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
+#            providerURN = self.RDR_HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
+#            myResourceURN = self.RSP_HPCRESOURCE_URNMAP.get(item['ResourceID'])
+            myResourceURN = self.RDR_HPCRESOURCE_URNMAP.get(item['ResourceID'])
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
             if providerURN:
@@ -1308,8 +1356,9 @@ class Router():
                 if item.get('AppVersion'):
                     ShortDescription += ' Version {}'.format(item['AppVersion'])
                 Description = Format_Description(item.get('Description'))
+                Description.blank_line()
                 try:
-                    Description.append('Running on {} ({})'.format(self.HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID']))
+                    Description.append('Running on {} ({})'.format(self.RSP_HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID']))
                 except:
                     pass
                 Handle = item.get('Handle')
@@ -1411,6 +1460,7 @@ class Router():
             try: #TODO
                 ShortDescription = item.get('Title','').strip()
                 Description = Format_Description(item.get('Description'))
+                Description.blank_line()
                 TargetAudience = item.get('TargetAudience')
                 if TargetAudience:
                     Description.append('For target audience: {}'.format(TargetAudience))
@@ -1461,7 +1511,7 @@ class Router():
     #####################################################################
     # Function for loading RDR (Resource Description Repository) data
     # Load RDR's organization data to ResourceV3 tables (local, standard)
-    # This function clears and re-populates self.RDRPROVIDER_URNMAP in each iteration
+    # This function clears and re-populates self.RDR_HPCRESOURCE_URNMAP in each iteration
     #
     def Write_RDR_Providers(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
@@ -1471,7 +1521,7 @@ class Router():
         self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
         localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/organizations/'
 
-        self.RDRPROVIDER_URNMAP = {}    # Clear
+        self.RDR_HPCPROVIDER_URNMAP = {}    # Clear
         cur = {}   # Current items
         new = {}   # New items
         # get existing organization data from local table
@@ -1486,11 +1536,11 @@ class Router():
                 myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(orgs['organization_id']))
 
                 # Skip if this org already processed
-                if myGLOBALURN == self.RDRPROVIDER_URNMAP.get(orgs['organization_id']):
+                if myGLOBALURN == self.RDR_HPCPROVIDER_URNMAP.get(orgs['organization_id']):
                     continue
 
                 # This will be used when resource data is loading for relationship connections
-                self.RDRPROVIDER_URNMAP[orgs['organization_id']] = myGLOBALURN
+                self.RDR_HPCPROVIDER_URNMAP[orgs['organization_id']] = myGLOBALURN
 
                 # --------------------------------------------
                 # update ResourceV3 (local) table
@@ -1554,6 +1604,7 @@ class Router():
     # Function for loading RDR (Resource Description Repository) data
     # Load RDR's base-resource data to ResourceV3 tables (local, standard, relation)
     # This function populates self.RDRRESOURCE_BASE_URNMAP
+    # This function populates self.RDRRESOURCE_INFOID_URNMAP
     #
     def Write_RDR_BaseResources(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
@@ -1574,23 +1625,26 @@ class Router():
                 continue
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(item['resource_id']))
 
+            self.RDRRESOURCE_BASE_URNMAP[item['resource_id']] = myGLOBALURN
+            if item.get('info_resourceid'):
+                self.RDRRESOURCE_INFOID_URNMAP[item['info_resourceid']] = myGLOBALURN
+            self.RDR_HPCRESOURCE_URNMAP[item['info_resourceid']] = myGLOBALURN
+            
             # --------------------------------------------
             # prepare for ResourceV3 (relation) table
             # update occurs later
 
-            # update to RDRRESOURCE_BASE_URNMAP
-            self.RDRRESOURCE_BASE_URNMAP[item['resource_id']] = myGLOBALURN
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
             # Support multiple organiztion cases for relation table update,but set
             # only the first organization for ProviderID of standard table 
             myProviderID = None
             for orgs in item['organizations']:
-                orgURN = self.RDRPROVIDER_URNMAP.get(orgs.get('organization_id', ''), None)
+                orgURN = self.RDR_HPCPROVIDER_URNMAP.get(orgs.get('organization_id', ''), None)
                 if orgURN:
                     # save only the first provider
                     if not myProviderID:
-                        myProviderID = self.RDRPROVIDER_URNMAP.get(orgs['organization_id'])
+                        myProviderID = self.RDR_HPCPROVIDER_URNMAP.get(orgs['organization_id'])
                     # set relation with organizations
                     myNEWRELATIONS[orgURN] = 'Provided By'
 
@@ -1718,7 +1772,7 @@ class Router():
             for subName in subNameList:
                 localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/' + subName + '/id/' 
 
-                res = item.get(subName,None)
+                res = item.get(subName, None)
                 # if one or more sub-resource type exist
                 if res:
                     # iterate sub-resource types in base-resource
@@ -1760,11 +1814,11 @@ class Router():
                         for orgs in item['organizations']:
                             if orgs.get('organization_url'):
                                 org_urls.append(orgs['organization_url'])
-                            orgURN = self.RDRPROVIDER_URNMAP.get(orgs.get('organization_id', ''), None)
+                            orgURN = self.RDR_HPCPROVIDER_URNMAP.get(orgs.get('organization_id', ''), None)
                             if orgURN:
                                 # save only the first provider
                                 if not myProviderID:
-                                    myProviderID = self.RDRPROVIDER_URNMAP.get(orgs['organization_id'])
+                                    myProviderID = self.RDR_HPCPROVIDER_URNMAP.get(orgs['organization_id'])
                                 # set relation with organizations
                                 myNEWRELATIONS[orgURN] = 'Provided By'
 
@@ -1777,7 +1831,7 @@ class Router():
                         if supportURN:
                             myNEWRELATIONS[supportURN] = 'Supported By'
 
-                        LocalURL = item.get('public_url', (localUrlPrefix + subID) )
+                        LocalURL = item.get('public_url') or (localUrlPrefix + subID)
 
                         # --------------------------------------------
                         # update ResourceV3 (local) table
