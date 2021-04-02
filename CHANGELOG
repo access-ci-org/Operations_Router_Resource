@@ -1,3 +1,6 @@
+tag-1.1-20210403 JP
+  - Remove old RDR Site and Resource code, improve Global URNMAP variable names, loading, and use
+
 tag-1.1-20210402 JP
   - Improve RDR Organization Name and Description
 

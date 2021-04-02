@@ -228,22 +228,18 @@ class Router():
         self.Affiliation = 'xsede.org'
         self.DefaultValidity = timedelta(days = 14)
 
-        self.GWPROVIDER_URNMAP = {}             # Mapping of Gateway Name to its GLOBALURN
-        self.SUPPORTPROVIDER_URNMAP = {}        # Mapping of Support GlobalID to its GLOBALURN
-        self.SUPPORTPROVIDER_URL2URN = {}       # Mapping of Support GlobalID to its Information Services URL
+        self.RSPGW_NAME_URNMAP = {}             # RSP Gateway Name map to URN
+        self.RSPSUPPORT_GLOBALID_URNMAP = {}    # RSP Support GlobalID map to URN
+        self.RSPSUPPORT_URL_URNMAP = {}         # RSP Support Information Services URL map to URN
 
-        # HPC PROVIDER ORGANIZATION maps
-        self.RSP_HPCPROVIDER_URNMAP = {}        # SiteID to GLOBALURN from RSP
-        self.RDR_HPCPROVIDER_URNMAP = {}        # Organization ID to GLOBALURN from RDR
+        # HPC PROVIDER information from RSP and RDR
+        self.RDRPROVIDER_ORGID_URNMAP = {}      # RDR Organization ID map to URN
 
-        # HPC RESOURCE maps from ResourceID to a GLOBALRUN
-        self.RSP_HPCRESOURCE_URNMAP = {}        # Original from RSP
-        self.RDR_HPCRESOURCE_URNMAP = {}        # Replacement from RDR
-
-        self.RSP_HPCRESOURCE_INFO = {}              # Resource detail by ResourceID
-        self.RDRRESOURCE_BASE_URNMAP = {}       # Mapping of RDR base-resource id to its GLOBALURN
-        self.RDRRESOURCE_INFOID_URNMAP = {}     # Mapping of RDR base-resource infoid to its GLOBALURN
-        self.RDRRESOURCE_SUB_URNMAP = {}        # Mapping of RDR sub-resource id to its GLOBALURN
+        # HPC RESOURCE information from RDR
+        self.RDRRESOURCE_URN_INFO = {}          # RDR Resource Information by URN (Name, ProviderID)
+        self.RDRRESOURCE_BASEID_URNMAP = {}     # RDR base-resource ID map to URN
+        self.RDRRESOURCE_INFOID_URNMAP = {}     # RDR base-resource INFOID map to URN
+        self.RDRRESOURCE_SUBID_URNMAP = {}      # RDR sub-resource ID map to URN
         if self.args.dev:
             self.WAREHOUSE_API_PREFIX = 'http://localhost:8000'
         else:
@@ -497,7 +493,7 @@ class Router():
                     for org in baseresource['organizations']:
                         self.RDRACTIVEORGANIZATIONS[org['organization_id']] = True
     #
-    # This function populates self.GWPROVIDER_URNMAP
+    # This function populates self.RSPGW_NAME_URNMAP
     #
     def Write_RSP_Gateway_Providers(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
@@ -513,7 +509,8 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            self.GWPROVIDER_URNMAP[item['Name']] = myGLOBALURN
+            if item.get('Name'):
+                self.RSPGW_NAME_URNMAP[item['Name']] = myGLOBALURN
             try:
                 local = ResourceV3Local(
                             ID = myGLOBALURN,
@@ -570,7 +567,7 @@ class Router():
 
     ####################################
     #
-    # This function populates self.SUPPORTPROVIDER_URNMAP
+    # This function populates self.RSPSUPPORT_GLOBALID_URNMAP
     #
     def Write_RSP_Support_Providers(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
@@ -585,13 +582,11 @@ class Router():
             cur[item.ID] = item
 
         for item in content[contype]:
-#           As of 2020-05-12 we need all the support providers, JP
-#            if (item.get('GlobalID') or '') == 'helpdesk.xsede.org': # We're only using HPC_Provider for now
-#                continue
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            self.SUPPORTPROVIDER_URNMAP[item['GlobalID']] = myGLOBALURN
-            myINFOURL = 'https://info.xsede.org/wh1/xcsr-db/v1/supportcontacts/globalid/{}/'.format(item['GlobalID'])
-            self.SUPPORTPROVIDER_URL2URN[myINFOURL] = myGLOBALURN
+            if item.get('GlobalID'):
+                self.RSPSUPPORT_GLOBALID_URNMAP[item['GlobalID']] = myGLOBALURN
+                myINFOURL = 'https://info.xsede.org/wh1/xcsr-db/v1/supportcontacts/globalid/{}/'.format(item['GlobalID'])
+                self.RSPSUPPORT_URL_URNMAP[myINFOURL] = myGLOBALURN
             try:
                 local = ResourceV3Local(
                             ID = myGLOBALURN,
@@ -651,199 +646,6 @@ class Router():
         return(0, '')
         
     ####################################
-    #
-    # This function populates self.RSP_HPCPROVIDER_URNMAP
-    # Obselete on 03-25-2021 as we replace RSP Providers with RDR Providers
-    #
-    def Write_RSP_HPC_Providers(self, content, contype, config):
-        start_utc = datetime.now(timezone.utc)
-        myRESGROUP = 'Organizations'
-        myRESTYPE = 'Provider'
-        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
-        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
-
-        cur = {}   # Current items
-        new = {}   # New items
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
-            cur[item.ID] = item
-
-        for item in content[contype]:
-            myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            self.RSP_HPCPROVIDER_URNMAP[item['SiteID']] = myGLOBALURN
-            try:
-                local = ResourceV3Local(
-                            ID = myGLOBALURN,
-                            CreationTime = datetime.now(timezone.utc),
-                            Validity = self.DefaultValidity,
-                            Affiliation = self.Affiliation,
-                            LocalID = item['DrupalNodeid'],
-                            LocalType = config['LOCALTYPE'],
-                            LocalURL = item.get('DrupalUrl', config.get('SOURCEDEFAULTURL', None)),
-                            CatalogMetaURL = self.CATALOGURN_to_URL(config['CATALOGURN']),
-                            EntityJSON = item,
-                        )
-                local.save()
-            except Exception as e:
-                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-            new[myGLOBALURN] = local
-                
-            try:
-                ShortDescription = None
-                Description = Format_Description(item.get('Description'))
-                resource = ResourceV3(
-                            ID = myGLOBALURN,
-                            Affiliation = self.Affiliation,
-                            LocalID = item['DrupalNodeid'],
-                            QualityLevel = 'Production',
-                            Name = item['Name'],
-                            ResourceGroup = myRESGROUP,
-                            Type = myRESTYPE,
-                            ShortDescription = ShortDescription,
-                            ProviderID = None,
-                            Description = Description.html(ID=myGLOBALURN),
-                            Topics = 'HPC',
-                            Keywords = item['SiteID'],
-                            Audience = self.Affiliation,
-                     )
-                resource.save()
-                if self.ESEARCH:
-                    resource.indexing()
-            except Exception as e:
-                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-                
-            self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
-            self.STATS.update({me + '.Update'})
-
-        self.Delete_OLD(me, cur, new)
-
-        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.Log_STEP(me)
-        return(0, '')
-
-    ####################################
-    #
-    # This function populates self.RSP_HPCPROVIDER_URNMAP
-    # Replaces on 03-25-2021 Write_RSP_HPC_Providers
-    #
-    def Memory_RSP_HPC_Providers(self, content, contype, config):
-        start_utc = datetime.now(timezone.utc)
-        me = '{} to RSP_HPCPROVIDER_URNMAP'.format(sys._getframe().f_code.co_name)
-        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
-
-        for item in content[contype]:
-            self.RSP_HPCPROVIDER_URNMAP[item['SiteID']] = item.get('GlobalResourceID')
-            self.STATS.update({me + '.Update'})
-        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.Log_STEP(me)
-        return(0, '')
-
-    ####################################
-    #
-    # This function populates self.RSP_HPCRESOURCE_URNMAP and self.RSP_HPCRESOURCE_INFO
-    # Obselete on 03-25-2021 as we replace RSP Resources with RDR Resources
-    #
-    def Write_RSP_HPC_Resources(self, content, contype, config):
-        start_utc = datetime.now(timezone.utc)
-        myRESGROUP = 'Computing Tools and Services'
-        myRESTYPE = 'Research Computing'
-        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
-        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
-
-        cur = {}   # Current items
-        new = {}   # New items
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
-            cur[item.ID] = item
-
-        for item in content[contype]:
-            myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            self.RSP_HPCRESOURCE_URNMAP[item['ResourceID']] = myGLOBALURN
-            self.RSP_HPCRESOURCE_INFO[item['ResourceID']] = item
-            # The new relations for this item, key=related ID, value=type of relation
-            myNEWRELATIONS = {}
-            providerURN = self.RSP_HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
-#            providerURN = self.RDR_HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
-            if providerURN:
-                myNEWRELATIONS[providerURN] = 'Provided By'
-            try:
-                local = ResourceV3Local(
-                            ID = myGLOBALURN,
-                            CreationTime = datetime.now(timezone.utc),
-                            Validity = self.DefaultValidity,
-                            Affiliation = self.Affiliation,
-                            LocalID = item['DrupalNodeid'],
-                            LocalType = config['LOCALTYPE'],
-                            LocalURL = item.get('DrupalUrl', config.get('SOURCEDEFAULTURL', None)),
-                            CatalogMetaURL = self.CATALOGURN_to_URL(config['CATALOGURN']),
-                            EntityJSON = item,
-                        )
-                local.save()
-            except Exception as e:
-                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-            new[myGLOBALURN] = local
-                
-            try:
-                ShortDescription = None
-                Description = Format_Description('{} operated by {}'.format(item['Name'], item['SiteName']))
-                Keywords = ','.join([item['SiteID'], item['ResourceID']])
-                resource = ResourceV3(
-                            ID = myGLOBALURN,
-                            Affiliation = self.Affiliation,
-                            LocalID = item['DrupalNodeid'],
-                            QualityLevel = 'Production',
-                            Name = item['Name'],
-                            ResourceGroup = myRESGROUP,
-                            Type = myRESTYPE,
-                            ShortDescription = ShortDescription,
-                            ProviderID = providerURN,
-                            Description = Description.html(ID=myGLOBALURN),
-                            Topics = 'HPC',
-                            Keywords = Keywords,
-                            Audience = self.Affiliation,
-                     )
-                resource.save()
-                if self.ESEARCH:
-                    resource.indexing(relations=myNEWRELATIONS)
-            except Exception as e:
-                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-                
-            self.Update_REL(myGLOBALURN, myNEWRELATIONS)
-
-            self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
-            self.STATS.update({me + '.Update'})
-
-        self.Delete_OLD(me, cur, new)
-
-        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.Log_STEP(me)
-        return(0, '')
-
-    ####################################
-    #
-    # This function populates self.RSP_HPCRESOURCE_INFO
-    # Replaces on 03-25-2021 Write_RSP_HPC_Providers
-    #
-    def Memory_RSP_HPC_Resources(self, content, contype, config):
-        start_utc = datetime.now(timezone.utc)
-        me = '{} to RSP_HPCRESOURCE_INFO'.format(sys._getframe().f_code.co_name)
-        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
-
-        for item in content[contype]:
-            self.RSP_HPCRESOURCE_INFO[item['ResourceID']] = item
-            self.STATS.update({me + '.Update'})
-
-        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.Log_STEP(me)
-        return(0, '')
-
-    ####################################
     def Write_RSP_Vendor_Software(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
         myRESGROUP = 'Software'
@@ -865,18 +667,18 @@ class Router():
             if item.get('ParentNodeid'):
                 parentURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['ParentNodeid'])
                 myNEWRELATIONS[parentURN] = 'Component Of'
-            supportURN = None
+            mySupportURN = None
             providerURN = None
             if item.get('Vendor') == 'Globus':
-                supportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1565'
+                mySupportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1565'
             elif item.get('Vendor') == 'XSEDE':
-                supportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1553'
+                mySupportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1553'
                 providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rdr:resource.organizations:2438'
             elif item.get('Vendor') == 'NCSA':
-                supportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1553'
+                mySupportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1553'
                 providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rdr:resource.organizations:844'
-            if supportURN:
-                myNEWRELATIONS[supportURN] = 'Supported By'
+            if mySupportURN:
+                myNEWRELATIONS[mySupportURN] = 'Supported By'
             if providerURN:
                 myNEWRELATIONS[providerURN] = 'Provided By'
                 
@@ -950,11 +752,6 @@ class Router():
         me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
         self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
 
-        ##########
-        # Load with selected items for GLUE2 Abstract Service and Endpoint
-        RSP2GLUE2 = {}
-        ##########
-        
         cur = {}     # Current items
         new = {}     # New items
         for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
@@ -966,29 +763,39 @@ class Router():
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
+            
             # Items can have HostingResourceID and related SiteID, ScienceGatewayName, SupportOrganizationGlobalID
             # Set relations: Gateway Integrated, Hosted On, Supported By
-            gatewayURN = self.GWPROVIDER_URNMAP.get(item.get('ScienceGatewayName', ''), None)
-            siteURN = self.RSP_HPCPROVIDER_URNMAP.get(item.get('SiteID', ''), None)
-#            siteURN = self.RDR_HPCPROVIDER_URNMAP.get(item.get('SiteID', ''), None)
-#            resourceURN = self.RSP_HPCRESOURCE_URNMAP.get(item.get('HostingResourceID', ''), None)
-            resourceURN = self.RDR_HPCRESOURCE_URNMAP.get(item.get('HostingResourceID', ''), None)
-            supportURN = self.SUPPORTPROVIDER_URNMAP.get(item.get('SupportOrganizationGlobalID', ''), None)
+            gatewayURN = self.RSPGW_NAME_URNMAP.get(item.get('ScienceGatewayName', ''))
+            try:
+                myResourceURN = self.RDRRESOURCE_INFOID_URNMAP[item['HostingResourceID']]
+            except:
+                myResourceURN = None
+                
+            try:
+                siteURN = self.RDRRESOURCE_URN_INFO[myResourceURN]['ProviderID']
+            except:
+                siteURN = None
+            if not siteURN and item.get('SupportOrganizationGlobalID', '') == 'helpdesk.xsede.org':
+                try: # Hardcode the RDR OrgID for "XSEDE"
+                    siteURN = self.RDRPROVIDER_ORGID_URNMAP['2438']
+                except:
+                    pass
 
-            providerURNxsede = self.RSP_HPCPROVIDER_URNMAP.get('xsede.org', None) \
-                if item.get('SupportOrganizationGlobalID', '') == 'helpdesk.xsede.org' else None
-#            providerURNxsede = self.RDR_HPCPROVIDER_URNMAP.get('xsede.org', None) \
-#                if item.get('SupportOrganizationGlobalID', '') == 'helpdesk.xsede.org' else None
-            # ProviderID priority order of Gateway, (SP) Site, or XSEDE (if supported by XSEDE)
-            providerURN = gatewayURN or siteURN or providerURNxsede
+            try:
+                mySupportURN = self.RSPSUPPORT_GLOBALID_URNMAP[item['SupportOrganizationGlobalID']]
+            except:
+                mySupportURN = None
+
+            providerURN = gatewayURN or siteURN
             if providerURN:
                 myNEWRELATIONS[providerURN] = 'Provided By'
             if gatewayURN:
                 myNEWRELATIONS[gatewayURN] = 'Gateway Integrated'
-            if resourceURN:
-                myNEWRELATIONS[resourceURN] = 'Hosted On'
-            if supportURN:
-                myNEWRELATIONS[supportURN] = 'Supported By'
+            if myResourceURN:
+                myNEWRELATIONS[myResourceURN] = 'Hosted On'
+            if mySupportURN:
+                myNEWRELATIONS[mySupportURN] = 'Supported By'
             try:
                 local = ResourceV3Local(
                             ID = myGLOBALURN,
@@ -1049,12 +856,6 @@ class Router():
             self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
             self.STATS.update({me + '.Update'})
             
-            
-#            if item.get('VendorSoftwareURL','') == 'http://grid.ncsa.illinois.edu/ssh/' and
-#                    item.get('HostingResourceID'):
-#                RSP2GLUE2[myGLOBALURN] = item
-#       }
- 
         self.Delete_OLD(me, cur, new)
 
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
@@ -1076,16 +877,13 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
-            if not self.RSP_HPCRESOURCE_INFO.get(item['ResourceID']):
+            try:
+                myResourceURN = self.RDRRESOURCE_INFOID_URNMAP[item['ResourceID']]
+            except:
                 msg = 'Undefined ResourceID={} in Local ID={}'.format(item['ResourceID'], myGLOBALURN)
                 self.logger.error(msg)
-                break
-                
-            mySiteID = self.RSP_HPCRESOURCE_INFO.get(item['ResourceID'])['SiteID']
-            providerURN = self.RSP_HPCPROVIDER_URNMAP[mySiteID]
-#            providerURN = self.RDR_HPCPROVIDER_URNMAP.get(mySiteID)
-#            myResourceURN = self.RSP_HPCRESOURCE_URNMAP.get(item['ResourceID'])
-            myResourceURN = self.RDR_HPCRESOURCE_URNMAP.get(item['ResourceID'])
+                continue
+            providerURN = self.RDRRESOURCE_URN_INFO[myResourceURN]['ProviderID']
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
             if providerURN:
@@ -1093,11 +891,11 @@ class Router():
             if myResourceURN:
                 myNEWRELATIONS[myResourceURN] = 'Hosted On'
             try: # Convert SupportContact URL into a Support Provider Resource URN
-                mySUPPORTURN = self.SUPPORTPROVIDER_URL2URN.get(item['SupportContact'])
-                if mySUPPORTURN:
-                    myNEWRELATIONS[mySUPPORTURN] = 'Supported By'
+                mySupportURN = self.RSPSUPPORT_URL_URNMAP.get(item['SupportContact'])
+                if mySupportURN:
+                    myNEWRELATIONS[mySupportURN] = 'Supported By'
             except:
-                continue
+                pass
 
             if item['InterfaceName'] == 'org.globus.gridftp':
                 Name = 'GridFTP data transfer endpoint'
@@ -1142,7 +940,7 @@ class Router():
                 if item.get('URL'):
                     Description.append('- Service URL: {}'.format(item.get('URL')))
                 try:
-                    Description.append('- Running on {} ({})'.format(self.RSP_HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID']))
+                    Description.append('- Running on {} ({})'.format(self.RDRRESOURCE_URN_INFO[myResourceURN]['Name'], item['ResourceID']))
                 except:
                     pass
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
@@ -1200,26 +998,31 @@ class Router():
                 
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
-#            myHostedID = self.RSP_HPCRESOURCE_URNMAP.get(item['HostingResourceID'],'')
-            myHostedID = self.RDR_HPCRESOURCE_URNMAP.get(item['HostingResourceID'],'')
-            if myHostedID:
-                myNEWRELATIONS[myHostedID] = 'Hosted On'
-            
-            # Set new relations and ProviderID to the GW or the SP if not from GW
-            if len(item.get('ScienceGatewayName') or '') > 0:
-                myGatewayID = self.GWPROVIDER_URNMAP.get(item['ScienceGatewayName'])
-                if myGatewayID:
-                    myNEWRELATIONS[myGatewayID] = 'Accessible From'
 
-            providerURN = myGatewayID or self.RSP_HPCPROVIDER_URNMAP.get(item['HostingResourceID'].split('.', 1)[1],'')
-#            providerURN = myGatewayID or self.RDR_HPCPROVIDER_URNMAP.get(item['HostingResourceID'].split('.', 1)[1],'')
+            try:
+                myResourceURN = self.RDRRESOURCE_INFOID_URNMAP[item['HostingResourceID']]
+                if myResourceURN:
+                    myNEWRELATIONS[myResourceURN] = 'Hosted On'
+            except:
+                myResourceURN = None
+
+            try:
+                myGatewayURN = self.RSPGW_NAME_URNMAP.get(item['ScienceGatewayName'])
+                if myGatewayURN:
+                    myNEWRELATIONS[myGatewayURN] = 'Accessible From'
+            except:
+                myGatewayURN = None
+
+            providerURN = myGatewayURN or myResourceURN
             if providerURN:
                 myNEWRELATIONS[providerURN] = 'Provided By'
             
-            if len(item.get('SupportOrganizationGlobalID') or '') > 0:
-                myRelatedID = self.SUPPORTPROVIDER_URNMAP.get(item['SupportOrganizationGlobalID'])
-                if myRelatedID:
-                    myNEWRELATIONS[myRelatedID] = 'Supported By'
+            try:
+                mySupportURN = self.RSPSUPPORT_GLOBALID_URNMAP[item['SupportOrganizationGlobalID']]
+                if mySupportURN:
+                    myNEWRELATIONS[mySupportURN] = 'Supported By'
+            except:
+                mySupportURN = None
 
             try:
                 local = ResourceV3Local(
@@ -1252,7 +1055,6 @@ class Router():
                     Description.append('- Vendor Product URL: {}'.format(item.get('VendorSoftwareURL')))
                 if item.get('VendorURL','') != item.get('VendorSoftwareURL', ''):
                     Description.append('- Vendor URL: {}'.format(item.get('VendorURL')))
-#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1302,10 +1104,13 @@ class Router():
 
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
-            providerURN = self.RSP_HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
-#            providerURN = self.RDR_HPCPROVIDER_URNMAP.get(item.get('SiteID', ''))
-#            myResourceURN = self.RSP_HPCRESOURCE_URNMAP.get(item['ResourceID'])
-            myResourceURN = self.RDR_HPCRESOURCE_URNMAP.get(item['ResourceID'])
+            try:
+                myResourceURN = self.RDRRESOURCE_INFOID_URNMAP[item['ResourceID']]
+            except:
+                msg = 'Undefined ResourceID={} in Local ID={}'.format(item['ResourceID'], myGLOBALURN)
+                self.logger.error(msg)
+                continue
+            providerURN = self.RDRRESOURCE_URN_INFO[myResourceURN]['ProviderID']
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
             if providerURN:
@@ -1313,11 +1118,11 @@ class Router():
             if myResourceURN:
                 myNEWRELATIONS[myResourceURN] = 'Hosted On'
             try: # Convert SupportContact URL into a Support Provider Resource URN
-                mySUPPORTURN = self.SUPPORTPROVIDER_URL2URN.get(item['SupportContact'])
-                if mySUPPORTURN:
-                    myNEWRELATIONS[mySUPPORTURN] = 'Supported By'
+                mySupportURN = self.RSPSUPPORT_URL_URNMAP.get(item['SupportContact'])
+                if mySupportURN:
+                    myNEWRELATIONS[mySupportURN] = 'Supported By'
             except:
-                continue
+                pass
             
             try:
                 local = ResourceV3Local(
@@ -1358,7 +1163,7 @@ class Router():
                 Description = Format_Description(item.get('Description'))
                 Description.blank_line()
                 try:
-                    Description.append('Running on {} ({})'.format(self.RSP_HPCRESOURCE_INFO[item['ResourceID']]['Name'], item['ResourceID']))
+                    Description.append('Running on {} ({})'.format(self.RDRRESOURCE_URN_INFO[myResourceURN]['Name'], item['ResourceID']))
                 except:
                     pass
                 Handle = item.get('Handle')
@@ -1377,7 +1182,6 @@ class Router():
                         Keywords = item.get('Keywords')
                 else:
                     Keywords = None
-#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1434,9 +1238,9 @@ class Router():
                 myNEWRELATIONS[providerURN] = 'Provided By'
             else: # TODO: Handle other Support Orgs
                 providerURN = None
-            supportURN = self.SUPPORTPROVIDER_URNMAP.get(mySupportOrgID, None)
-            if supportURN:
-                myNEWRELATIONS[supportURN] = 'Supported By'
+            mySupportURN = self.RSPSUPPORT_GLOBALID_URNMAP.get(mySupportOrgID, None)
+            if mySupportURN:
+                myNEWRELATIONS[mySupportURN] = 'Supported By'
 
             try:
                 local = ResourceV3Local(
@@ -1472,7 +1276,6 @@ class Router():
                 ProvisioningInstructionsURL = item.get('ProvisioningInstructionsURL')
                 if ProvisioningInstructionsURL:
                     Description.append('- Installation Instructions: {}'.format(ProvisioningInstructionsURL))
-#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
                 resource = ResourceV3(
                             ID = myGLOBALURN,
                             Affiliation = self.Affiliation,
@@ -1511,7 +1314,7 @@ class Router():
     #####################################################################
     # Function for loading RDR (Resource Description Repository) data
     # Load RDR's organization data to ResourceV3 tables (local, standard)
-    # This function clears and re-populates self.RDR_HPCRESOURCE_URNMAP in each iteration
+    # This function clears and re-populates self.RDRPROVIDER_ORGID_URNMAP in each iteration
     #
     def Write_RDR_Providers(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
@@ -1521,7 +1324,7 @@ class Router():
         self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
         localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/organizations/'
 
-        self.RDR_HPCPROVIDER_URNMAP = {}    # Clear
+        self.RDRPROVIDER_ORGID_URNMAP = {}    # Clear
         cur = {}   # Current items
         new = {}   # New items
         # get existing organization data from local table
@@ -1536,11 +1339,11 @@ class Router():
                 myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(orgs['organization_id']))
 
                 # Skip if this org already processed
-                if myGLOBALURN == self.RDR_HPCPROVIDER_URNMAP.get(orgs['organization_id']):
+                if myGLOBALURN == self.RDRPROVIDER_ORGID_URNMAP.get(orgs['organization_id']):
                     continue
 
                 # This will be used when resource data is loading for relationship connections
-                self.RDR_HPCPROVIDER_URNMAP[orgs['organization_id']] = myGLOBALURN
+                self.RDRPROVIDER_ORGID_URNMAP[orgs['organization_id']] = myGLOBALURN
 
                 # --------------------------------------------
                 # update ResourceV3 (local) table
@@ -1619,7 +1422,7 @@ class Router():
     #################################################################################
     # Function for loading RDR (Resource Description Repository) data
     # Load RDR's base-resource data to ResourceV3 tables (local, standard, relation)
-    # This function populates self.RDRRESOURCE_BASE_URNMAP
+    # This function populates self.RDRRESOURCE_BASEID_URNMAP
     # This function populates self.RDRRESOURCE_INFOID_URNMAP
     #
     def Write_RDR_BaseResources(self, content, contype, config):
@@ -1641,10 +1444,9 @@ class Router():
                 continue
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(item['resource_id']))
 
-            self.RDRRESOURCE_BASE_URNMAP[item['resource_id']] = myGLOBALURN
+            self.RDRRESOURCE_BASEID_URNMAP[item['resource_id']] = myGLOBALURN
             if item.get('info_resourceid'):
                 self.RDRRESOURCE_INFOID_URNMAP[item['info_resourceid']] = myGLOBALURN
-            self.RDR_HPCRESOURCE_URNMAP[item['info_resourceid']] = myGLOBALURN
             
             # --------------------------------------------
             # prepare for ResourceV3 (relation) table
@@ -1656,18 +1458,17 @@ class Router():
             # only the first organization for ProviderID of standard table 
             myProviderID = None
             for orgs in item['organizations']:
-                orgURN = self.RDR_HPCPROVIDER_URNMAP.get(orgs.get('organization_id', ''), None)
+                orgURN = self.RDRPROVIDER_ORGID_URNMAP.get(orgs.get('organization_id', ''), None)
                 if orgURN:
-                    # save only the first provider
-                    if not myProviderID:
-                        myProviderID = self.RDR_HPCPROVIDER_URNMAP.get(orgs['organization_id'])
+                    if not myProviderID:    # save only the first provider
+                        myProviderID = self.RDRPROVIDER_ORGID_URNMAP.get(orgs['organization_id'])
                     # set relation with organizations
                     myNEWRELATIONS[orgURN] = 'Provided By'
 
             # set relation with "XSEDE support org"
-            supportURN = self.SUPPORTPROVIDER_URNMAP.get('helpdesk.xsede.org', None)
-            if supportURN:
-                myNEWRELATIONS[supportURN] = 'Supported By'
+            mySupportURN = self.RSPSUPPORT_GLOBALID_URNMAP.get('helpdesk.xsede.org', None)
+            if mySupportURN:
+                myNEWRELATIONS[mySupportURN] = 'Supported By'
 
             LocalURL = item.get('public_url', (localUrlPrefix + str(item['resource_id'])) )
 
@@ -1747,7 +1548,11 @@ class Router():
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
                 return(False, msg)
-            
+
+            self.RDRRESOURCE_URN_INFO[myGLOBALURN] = {
+                'Name': item['resource_descriptive_name'],
+                'ProviderID': myProviderID
+            }
             # --------------------------------------------
             # update ResourceV3 (relation) table
             self.Update_REL(myGLOBALURN, myNEWRELATIONS)
@@ -1765,7 +1570,7 @@ class Router():
     ################################################################################
     # Function for loading RDR (Resource Description Repository) data
     # Load RDR's sub-resource data to ResourceV3 tables (local, standard, relation)
-    # This function populates self.RDRRESOURCE_SUB_URNMAP
+    # This function populates self.RDRRESOURCE_SUBID_URNMAP
     #
     def Write_RDR_SubResources(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
@@ -1819,8 +1624,8 @@ class Router():
                         # prepare for ResourceV3 (relation) table
                         # update occurs later
 
-                        # update to RDRRESOURCE_SUB_URNMAP
-                        self.RDRRESOURCE_SUB_URNMAP[subID] = myGLOBALURN
+                        # update to RDRRESOURCE_SUBID_URNMAP
+                        self.RDRRESOURCE_SUBID_URNMAP[subID] = myGLOBALURN
                         # The new relations for this item, key=related ID, value=type of relation
                         myNEWRELATIONS = {}
                         # Support multiple organiztion cases for relation table update,but set
@@ -1830,22 +1635,22 @@ class Router():
                         for orgs in item['organizations']:
                             if orgs.get('organization_url'):
                                 org_urls.append(orgs['organization_url'])
-                            orgURN = self.RDR_HPCPROVIDER_URNMAP.get(orgs.get('organization_id', ''), None)
+                            orgURN = self.RDRPROVIDER_ORGID_URNMAP.get(orgs.get('organization_id', ''), None)
                             if orgURN:
                                 # save only the first provider
                                 if not myProviderID:
-                                    myProviderID = self.RDR_HPCPROVIDER_URNMAP.get(orgs['organization_id'])
+                                    myProviderID = self.RDRPROVIDER_ORGID_URNMAP.get(orgs['organization_id'])
                                 # set relation with organizations
                                 myNEWRELATIONS[orgURN] = 'Provided By'
 
                         # set relation with base-resource
-                        baseURN = self.RDRRESOURCE_BASE_URNMAP.get(item.get('resource_id', ''), None)
+                        baseURN = self.RDRRESOURCE_BASEID_URNMAP.get(item.get('resource_id', ''), None)
                         if baseURN:
                             myNEWRELATIONS[baseURN] = 'Component Of'
                         # set relation with "XSEDE support org"
-                        supportURN = self.SUPPORTPROVIDER_URNMAP.get('helpdesk.xsede.org', None)
-                        if supportURN:
-                            myNEWRELATIONS[supportURN] = 'Supported By'
+                        mySupportURN = self.RSPSUPPORT_GLOBALID_URNMAP.get('helpdesk.xsede.org', None)
+                        if mySupportURN:
+                            myNEWRELATIONS[mySupportURN] = 'Supported By'
 
                         LocalURL = item.get('public_url') or (localUrlPrefix + subID)
 
