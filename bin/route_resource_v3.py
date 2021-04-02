@@ -1566,14 +1566,30 @@ class Router():
                 # --------------------------------------------
                 # update ResourceV3 (standard) table
                 try:
+                    Name = orgs['organization_name']
+                    if orgs.get('organization_abbreviation'):
+                        Name += ' ({})'.format(orgs['organization_abbreviation'])
                     ShortDescription = None
-                    Description = Format_Description(orgs.get('organization_name'))
+                    Description = Format_Description(Name)
+                    Location = None
+                    for locfld in ['city', 'state', 'country']:
+                        if orgs.get(locfld):
+                            if not Location:
+                                Location = '- Location: {}'.format(orgs.get(locfld))
+                            else:
+                                Location += ', {}'.format(orgs.get(locfld))
+                    Description.blank_line()
+                    if Location:
+                        Description.append(Location)
+                    if orgs.get('organization_url'):
+                        Description.append('- Organization URL: {}'.format(orgs.get('organization_url')))
+
                     resource = ResourceV3(
                                 ID = myGLOBALURN,
                                 Affiliation = self.Affiliation,
                                 LocalID = str(orgs['organization_id']),
                                 QualityLevel = 'Production',
-                                Name = orgs['organization_name'],
+                                Name = Name,
                                 ResourceGroup = myRESGROUP,
                                 Type = myRESTYPE,
                                 ShortDescription = ShortDescription,
