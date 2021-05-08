@@ -1410,8 +1410,8 @@ class Router():
                     self.logger.error(msg)
                     return(False, msg)
             
-            self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
-            self.STATS.update({me + '.Update'})
+                self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
+                self.STATS.update({me + '.Update'})
 
         self.Delete_OLD(me, cur, new)
 
