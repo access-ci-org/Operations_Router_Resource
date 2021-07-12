@@ -1281,7 +1281,7 @@ class Router():
                             Affiliation = self.Affiliation,
                             LocalID = item['DrupalNodeid'],
                             QualityLevel = item.get('DeclaredStatus', 'Production').capitalize(),
-                            Name = item.get('Title', item.get('VendorSoftwareCommonName', ''),
+                            Name = item.get('Title', item.get('VendorSoftwareCommonName', '')),
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
