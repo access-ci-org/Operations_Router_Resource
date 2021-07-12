@@ -1168,6 +1168,8 @@ class Router():
                 if Handle:
                     if Handle.get('HandleType','').lower() == 'module' and Handle.get('HandleKey'):
                         Description.append('To access from a shell use the command:\n\n  module load {}'.format(Handle.get('HandleKey')))
+                    elif Handle.get('HandleType','').lower() == 'valet' and Handle.get('HandleKey'):
+                        Description.append('To access from a shell use the command:\n\n  vpkg_require {}'.format(Handle.get('HandleKey')))
 
                 if item.get('Domain'):
                     Domain = ','.join(item['Domain'])
