@@ -1,3 +1,6 @@
+tag-1.1-20210712 JP
+  - Packaged software name should use the Title and fall back on the Vendor Common Name
+
 tag-1.1-20210507 JP
   - Fix bug in RDR Organization load
 

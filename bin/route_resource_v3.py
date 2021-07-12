@@ -11,11 +11,9 @@
 # Organizations:*
 #   Write_RSP_Gateway_Providers
 #   Write_RSP_Support_Providers
-#   Write_RSP_HPC_Providers          -> (including XSEDE)
 #   Write_RDR_Providers
 #
 # Computing Tools and Services:*
-#   Write_RSP_HPC_Resources
 #   Write_RDR_BaseResources
 #   Write_RDR_SubResources
 #
@@ -1281,7 +1279,7 @@ class Router():
                             Affiliation = self.Affiliation,
                             LocalID = item['DrupalNodeid'],
                             QualityLevel = item.get('DeclaredStatus', 'Production').capitalize(),
-                            Name = item['VendorSoftwareCommonName'],
+                            Name = item.get('Title', item.get('VendorSoftwareCommonName', ''),
                             ResourceGroup = myRESGROUP,
                             Type = myRESTYPE,
                             ShortDescription = ShortDescription,
