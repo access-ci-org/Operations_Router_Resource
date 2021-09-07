@@ -1,4 +1,9 @@
+tag-1.1-20210907 JP
+  - Switch to .objects.get_or_create for Drupal 3.0
+
 tag-1.1-20210712 JP
+  - Packaged software name should use the Title and fall back on the Vendor Common Name
+
   - Packaged software name should use the Title and fall back on the Vendor Common Name
 
 tag-1.1-20210525 EB
