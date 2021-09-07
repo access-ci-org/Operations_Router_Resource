@@ -1,3 +1,6 @@
+tag-1.1-20210907b JP
+  - Fix typo
+
 tag-1.1-20210907 JP
   - Switch to .objects.get_or_create for Drupal 3.0
 

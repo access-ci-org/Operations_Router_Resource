@@ -697,7 +697,7 @@ class Router():
                                 'LocalURL': item.get('DrupalUrl', config.get('SOURCEDEFAULTURL', None)),
                                 'CatalogMetaURL': self.CATALOGURN_to_URL(config['CATALOGURN']),
                                 'EntityJSON': item
-                        )
+                            })
                 local.save()
             except Exception as e:
                 msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
@@ -729,7 +729,7 @@ class Router():
                                 'Topics': None,
                                 'Keywords': item['Tags'],
                                 'Audience': self.Affiliation
-                     )
+                            })
                 resource.save()
                 if self.ESEARCH:
                     resource.indexing(relations=myNEWRELATIONS)
