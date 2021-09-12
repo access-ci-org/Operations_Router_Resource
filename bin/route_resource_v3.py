@@ -613,7 +613,7 @@ class Router():
                 Description = Format_Description(item.get('Description'))
                 Description.blank_line()
                 for c in ['ContactURL', 'ContactEmail', 'ContactPhone']:
-                    if c in item and item[c] is not None and item[c] is not '':
+                    if c in item and item[c]:
                         Description.append('- {} is {}'.format(c, item[c]))
                 resource, created = ResourceV3.objects.update_or_create(
                             ID = myGLOBALURN,
