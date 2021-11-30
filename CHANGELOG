@@ -1,3 +1,6 @@
+tag-1.2-20211130 JP
+  - NCSA and XSEDE are must be active as they provide core XSEDE services
+
 tag-1.1-20210912 JP
   - Fix test of string for a value
 
