@@ -472,7 +472,7 @@ class Router():
     def Identity_RDRACTIVE(self, allresources):
         active_status_set = set(['friendly', 'coming soon', 'pre-production', 'production', 'post-production'])
         excluded_resourceid_set = set(['stand-alone.tg.teragrid.org', 'futuregrid0.futuregrid.xsede.org', 'Abe-QB-Grid.teragrid.org'])
-        self.RDRACTIVEORGANIZATIONS = {}        # Keyed by organization_id
+        self.RDRACTIVEORGANIZATIONS = {844: True, 2438: True}  # Keyed by organization_id, NCSA and XSEDE
         self.RDRACTIVERESOURCES = {}            # Keyed by info_resourceid
         for baseresource in allresources:
             if baseresource['project_affiliation'] != 'XSEDE' or \
@@ -613,7 +613,7 @@ class Router():
                 Description = Format_Description(item.get('Description'))
                 Description.blank_line()
                 for c in ['ContactURL', 'ContactEmail', 'ContactPhone']:
-                    if c in item and item[c]:
+                    if item.get(c):
                         Description.append('- {} is {}'.format(c, item[c]))
                 resource, created = ResourceV3.objects.update_or_create(
                             ID = myGLOBALURN,
