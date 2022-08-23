@@ -338,7 +338,7 @@ class Router():
 
         headers = {}
         # different headers for RDR site 
-        if 'rdr.xsede.org' == url.hostname:
+        if 'cider.access-ci.org' == url.hostname:
             headers = {'Content-type': 'application/json',
                         'XA-CLIENT': 'XSEDE',
                         'XA-KEY-FORMAT': 'underscore'}

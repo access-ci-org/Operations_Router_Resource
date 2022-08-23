@@ -1,3 +1,6 @@
+tag-1.2-20220823 JP
+  - Transition from rdr.xsede.org to cider.access-ci.org hostname, no other XSEDE to ACCESS CI changes
+
 tag-1.2-20211130 JP
   - NCSA and XSEDE are must be active as they provide core XSEDE services
 
