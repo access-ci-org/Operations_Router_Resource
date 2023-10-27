@@ -1,3 +1,6 @@
+v2.0.1 2023-10-27 JP
+  - Fix sbin/{router_resource.sysconfig,router_resource.service}
+
 v2.0.0 2023-10-27 JP
   - Forked https://github.com/XSEDE/Discovery_Manage-Resource-V3
   - Convert from XSEDE to ACCESS

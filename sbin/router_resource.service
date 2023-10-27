@@ -4,8 +4,8 @@ After=network.target remote-fs.target nss-lookup.target
 
 [Service]
 Type=simple
-EnvironmentFile=/soft/applications-2.0/router_resource/PROD/sbin/router_resource.sysconfig
-ExecStart=/soft/applications-2.0/router_resource/PROD/sbin/router_resource.service.sh start
+EnvironmentFile=%APP_HOME%/sbin/%APP_NAME%.sysconfig
+ExecStart=%APP_HOME%/sbin/%APP_NAME%.service.sh start
 User=software
 Group=admin
 Restart=always
