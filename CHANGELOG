@@ -1,3 +1,6 @@
+v2.0.3 2023-10-27 JP
+  - Fix APP_BASE -> APP_HOME
+
 v2.0.2 2023-10-27 JP
   - Fix sbin/router_resource.sh
 

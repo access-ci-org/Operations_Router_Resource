@@ -12,7 +12,7 @@
 
 ####### Customizations START #######
 APP_NAME=router_resource
-APP_BASE=/soft/applications-2.0/router_resource
+APP_HOME=%APP_HOME%
 WAREHOUSE_BASE=/soft/warehouse-2.0
 # Override in shell environment
 if [ -z "$PYTHON_BASE" ]; then
@@ -22,20 +22,20 @@ DAEMON_USER=software
 ####### Customizations END #######
 
 ####### Everything else should be standard #######
-APP_SOURCE=${APP_BASE}/PROD
+APP_SOURCE=${APP_HOME}/PROD
 WAREHOUSE_SOURCE=${WAREHOUSE_BASE}/PROD
 
-APP_LOG=${APP_BASE}/var/${APP_NAME}.daemon.log
+APP_LOG=${APP_HOME}/var/${APP_NAME}.daemon.log
 if [[ "$1" != --pdb && "$2" != --pdb && "$3" != --pdb && "$4" != --pdb ]]; then
     exec >${APP_LOG} 2>&1
 fi
 
 APP_BIN=${APP_SOURCE}/bin/${APP_NAME}.py
-APP_OPTS="-c ${APP_BASE}/conf/${APP_NAME}.conf"
+APP_OPTS="-c ${APP_HOME}/conf/${APP_NAME}.conf"
 
 PYTHON_BIN=python3
 export LD_LIBRARY_PATH=${PYTHON_BASE}/lib
-source ${APP_BASE}/python/bin/activate
+source ${APP_HOME}/python/bin/activate
 
 export PYTHONPATH=${APP_SOURCE}/lib:${WAREHOUSE_SOURCE}/Operations_Warehouse_Django
 export APP_CONFIG=${APP_HOME}/conf/django_prod_router.conf
