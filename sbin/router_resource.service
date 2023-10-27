@@ -1,0 +1,14 @@
+[Unit]
+Description=Information Sharing Platform Resource Router
+After=network.target remote-fs.target nss-lookup.target
+
+[Service]
+Type=simple
+EnvironmentFile=/soft/applications-2.0/router_resource/PROD/sbin/router_resource.sysconfig
+ExecStart=/soft/applications-2.0/router_resource/PROD/sbin/router_resource.service.sh start
+User=software
+Group=admin
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

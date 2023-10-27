@@ -1,0 +1,13 @@
+APP_NAME=router_resource
+APP_BASE=/soft/applications-2.0/router_resource
+APP_BIN=/soft/applications-2.0/router_resource/PROD/bin/router_resource.py
+# Add any command line options for your daemon here
+APP_OPTS="-c /soft/applications-2.0/router_resource/conf/router_resource.conf"
+
+PYTHON_BASE=/soft/python/python-3.7.6-base
+PIPENV_BASE=/soft/applications-2.0/router_resource/python
+PYTHON_BIN=python3
+PYTHONPATH=/soft/applications-2.0/router_resource/PROD/lib:/soft/warehouse-2.0/PROD/Operations_Warehouse_Django
+
+DJANGO_CONF=/soft/applications-2.0/router_resource/conf/django_prod_router.conf
+DJANGO_SETTINGS_MODULE=Operations_Warehouse_Django.settings

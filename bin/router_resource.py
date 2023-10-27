@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Router to synchronize RSP, GLUE2, and RDR informaton into the Warehouse Resource tables
+# Router to synchronize RSP, GLUE2, and CIDER informaton into the Warehouse Resource tables
 #
 # Author: JP Navarro, March 2020
 #         Jonathan Kim, October 2020
@@ -9,27 +9,17 @@
 #   Function
 # -------------------------------------------------------------------------------------------------
 # Organizations:*
-#   Write_RSP_Gateway_Providers
-#   Write_RSP_Support_Providers
-#   Write_RDR_Providers
+#   Write_CIDER_Organizations
 #
 # Computing Tools and Services:*
-#   Write_RDR_BaseResources
-#   Write_RDR_SubResources
-#
-# Software:Vendor Software
-#   Write_RSP_Vendor_Software
+#   Write_CIDER_BaseResources
+#   Write_CIDER_SubResources
 #
 # Software:Online Service
-#   Write_RSP_Network_Service        -> from RSP Operational Software
 #   Write_Glue2_Network_Service      -> from glue2.{AbstractService, Endpoint}
 #
 # Software:Executable Software
-#   Write_RSP_Executable_Software
-#   Write_Glue2_Executable_Software  ->from glue2.{ApplicationEnvironment, ApplicationHandle}
-#
-# Software:Packaged Software
-#   Write_RSP_Packaged_Software
+#   Write_Glue2_Executable_Software  -> from glue2.{ApplicationEnvironment, ApplicationHandle}
 #
 import argparse
 from collections import Counter
@@ -59,11 +49,8 @@ from django.conf import settings as django_settings
 from django.db import DataError, IntegrityError
 from django.forms.models import model_to_dict
 from django_markup.markup import formatter
-from resource_v3.models import *
-from processing_status.process import ProcessingActivity
-
-import elasticsearch_dsl.connections
-from elasticsearch import Elasticsearch, RequestsHttpConnection
+from resource_v4.models import *
+from warehouse_state.process import ProcessingActivity
 
 import pdb
 
@@ -199,23 +186,18 @@ class Router():
             ('once' if self.args.once else 'continuous')
         self.logger.critical('Starting mode=({}), program={}, pid={}, uid={}({})'.format(mode, os.path.basename(__file__), os.getpid(), os.geteuid(), pwd.getpwuid(os.geteuid()).pw_name))
 
-        # Connect Database
+        # Connect database, Django connects automatially as needed
         configured_database = django_settings.DATABASES['default'].get('HOST', None)
         if configured_database:
             self.logger.critical('Warehouse database={}'.format(configured_database))
-        # Django connects automatially as needed
-
-        # Connect Elasticsearch
-        if 'ELASTIC_HOSTS' in self.config:
-            self.logger.critical('Warehouse elastichost={}'.format(self.config['ELASTIC_HOSTS']))
-            self.ESEARCH = elasticsearch_dsl.connections.create_connection( \
-                hosts = self.config['ELASTIC_HOSTS'], \
-                connection_class = RequestsHttpConnection, \
-                timeout = 10)
-            ResourceV3Index.init()              # Initialize it if it doesn't exist
+        # Connect Opensearch
+        if django_settings.OSCON:
+            self.logger.critical('Warehouse OpenSearch profile={}'.format(django_settings.OSCON))
+            self.OPENSEARCH = django_settings.OSCON
+            ResourceV4Index.init()              # Initialize it if it doesn't exist
         else:
-            self.logger.info('Warehouse elastichost=NONE')
-            self.ESEARCH = None
+            self.logger.info('Warehouse OpenSearch profile=NONE')
+            self.OPENSEARCH = None
 
         # Initialize application variables
         self.peak_sleep = peak_sleep * 60       # 10 minutes in seconds during peak business hours
@@ -223,27 +205,27 @@ class Router():
         self.max_stale = max_stale * 60         # 24 hours in seconds force refresh
         self.application = os.path.basename(__file__)
         self.memory = {}                        # Used to put information in "memory"
-        self.Affiliation = 'xsede.org'
+        self.Affiliation = 'access-ci.org'
         self.DefaultValidity = timedelta(days = 14)
 
         self.RSPGW_NAME_URNMAP = {}             # RSP Gateway Name map to URN
         self.RSPSUPPORT_GLOBALID_URNMAP = {}    # RSP Support GlobalID map to URN
         self.RSPSUPPORT_URL_URNMAP = {}         # RSP Support Information Services URL map to URN
 
-        # HPC PROVIDER information from RSP and RDR
-        self.RDRPROVIDER_ORGID_URNMAP = {}      # RDR Organization ID map to URN
+        # HPC PROVIDER information from RSP and CIDER
+        self.CIDERPROVIDER_ORGID_URNMAP = {}      # CIDER Organization ID map to URN
 
-        # HPC RESOURCE information from RDR
-        self.RDRRESOURCE_URN_INFO = {}          # RDR Resource Information by URN (Name, ProviderID)
-        self.RDRRESOURCE_BASEID_URNMAP = {}     # RDR base-resource ID map to URN
-        self.RDRRESOURCE_INFOID_URNMAP = {}     # RDR base-resource INFOID map to URN
-        self.RDRRESOURCE_SUBID_URNMAP = {}      # RDR sub-resource ID map to URN
+        # HPC RESOURCE information from CIDER
+        self.CIDERRESOURCE_URN_INFO = {}          # CIDER Resource Information by URN (Name, ProviderID)
+        self.CIDERRESOURCE_BASEID_URNMAP = {}     # CIDER base-resource ID map to URN
+        self.CIDERRESOURCE_INFOID_URNMAP = {}     # CIDER base-resource INFOID map to URN
+        self.CIDERRESOURCE_SUBID_URNMAP = {}      # CIDER sub-resource ID map to URN
         if self.args.dev:
             self.WAREHOUSE_API_PREFIX = 'http://localhost:8000'
         else:
-            self.WAREHOUSE_API_PREFIX = 'https://info.xsede.org/wh1'
-        self.WAREHOUSE_API_VERSION = 'v3'
-        self.WAREHOUSE_CATALOG = 'ResourceV3'
+            self.WAREHOUSE_API_PREFIX = 'https://operations-api.access-ci.org/wh2'
+        self.WAREHOUSE_API_VERSION = 'v4'
+        self.WAREHOUSE_CATALOG = 'ResourceV4'
 
         # Used in Get_HTTP as memory cache for contents
         self.HTTP_CACHE = {}
@@ -251,7 +233,7 @@ class Router():
 
         # Loading all the Catalog entries for our affiliation
         self.CATALOGS = {}
-        for cat in ResourceV3Catalog.objects.filter(Affiliation__exact=self.Affiliation):
+        for cat in ResourceV4Catalog.objects.filter(Affiliation__exact=self.Affiliation):
             self.CATALOGS[cat.ID] = model_to_dict(cat)
 
         self.STEPS = []
@@ -337,13 +319,19 @@ class Router():
             return({contype: self.HTTP_CACHE[data_cache_key]})
 
         headers = {}
-        # different headers for RDR site 
+        # different headers for CIDER site 
         if 'cider.access-ci.org' == url.hostname:
             headers = {'Content-type': 'application/json',
-                        'XA-CLIENT': 'XSEDE',
+                        'XA-CLIENT': 'ACCESS',
                         'XA-KEY-FORMAT': 'underscore'}
-        ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        conn = httplib.HTTPSConnection(host=url.hostname, port=getattr(url, 'port', None), context=ctx)
+        port = getattr(url, 'port')
+        if getattr(url, 'scheme', '') == 'https' or (port or 0) == 443:
+#   2023-10-07 JP - figure out later the appropriate level of ssl verification
+#            ctx = ssl.create_default_context()
+            ctx = ssl._create_unverified_context()
+            conn = httplib.HTTPSConnection(host=url.hostname, port=port, context=ctx)
+        else:
+            conn = httplib.HTTPConnection(host=url.hostname, port=port)
 
         conn.request('GET', url.path, None, headers)
         self.logger.debug('HTTP GET {}'.format(url.geturl()))
@@ -355,13 +343,20 @@ class Router():
         except ValueError as e:
             self.logger.error('Response not in expected JSON format ({})'.format(e))
             return(None)
-        else:
-            # cache content only for the url used more than once
-            if url.geturl() in self.URL_USE_COUNT:
-                if (self.URL_USE_COUNT[url.geturl()] > 1):
-                    # save retrieved content to the HTTP_CACHE to reuse from memory
-                    self.HTTP_CACHE[data_cache_key] = content
-            return({contype: content})
+
+        status_code = content.get('status_code')
+        if status_code and status_code != '200':
+            self.logger.error('Response status_code error: {}'.format(status_code))
+
+        if content.get('results'):
+            content = content.get('results')
+             
+        # cache content only for the url used more than once
+        if url.geturl() in self.URL_USE_COUNT:
+            if (self.URL_USE_COUNT[url.geturl()] > 1):
+                # save retrieved content to the HTTP_CACHE to reuse from memory
+                self.HTTP_CACHE[data_cache_key] = content
+        return({contype: content})
 
     def Analyze_CONTENT(self, content):
         # Write when needed
@@ -403,15 +398,15 @@ class Router():
     #
     def Delete_OLD(self, me, cur, new):
         for URN in [id for id in cur if id not in new]:
-            if self.ESEARCH:
+            if self.OPENSEARCH:
                 try:
-                    ResourceV3Index.get(id = URN).delete()
+                    ResourceV4Index.get(id = URN).delete()
                 except Exception as e:
                     self.logger.error('{} deleting Elastic id={}: {}'.format(type(e).__name__, URN, e))
             try:
-                ResourceV3Relation.objects.filter(FirstResourceID__exact = URN).delete()
-                ResourceV3.objects.get(pk = URN).delete()
-                ResourceV3Local.objects.get(pk = URN).delete()
+                ResourceV4Relation.objects.filter(FirstResourceID__exact = URN).delete()
+                ResourceV4.objects.get(pk = URN).delete()
+                ResourceV4Local.objects.get(pk = URN).delete()
             except Exception as e:
                 self.logger.error('{} deleting ID={}: {}'.format(type(e).__name__, URN, e))
             else:
@@ -428,7 +423,7 @@ class Router():
                 relationType = newRELATIONS[relatedID]
                 relationHASH = md5(':'.join([relatedID, relationType]).encode('UTF-8')).hexdigest()
                 relationID = ':'.join([myURN, relationHASH])
-                relation, created = ResourceV3Relation.objects.update_or_create(
+                relation, created = ResourceV4Relation.objects.update_or_create(
                             ID = relationID,
                             defaults = {
                                 'FirstResourceID': myURN,
@@ -442,7 +437,7 @@ class Router():
                 return(False, msg)
             newIDS.append(relationID)
         try:
-            ResourceV3Relation.objects.filter(FirstResourceID__exact = myURN).exclude(ID__in = newIDS).delete()
+            ResourceV4Relation.objects.filter(FirstResourceID__exact = myURN).exclude(ID__in = newIDS).delete()
         except Exception as e:
             self.logger.error('{} deleting Relations for Resource ID={}: {}'.format(type(e).__name__, myURN, e))
     #
@@ -454,30 +449,28 @@ class Router():
             self.STATS[me + '.Update'], self.STATS[me + '.Delete'], self.STATS[me + '.Skip'])
         self.logger.info(summary_msg)
     #
-    # Determine which RDR resources are active
+    # Determine which CIDER resources are active
     #
-    def Is_Active_RDR(self, allresources, organization=None, resource=None):
-        if not hasattr(self, 'RDRACTIVEORGANIZATIONS') or not hasattr(self, 'RDRACTIVERESOURCES'):
-            self.Identity_RDRACTIVE(allresources)
-        if organization and organization in self.RDRACTIVEORGANIZATIONS:
+    def Is_Active_CIDER(self, allresources, organization=None, resource=None):
+        if not hasattr(self, 'CIDERACTIVEORGANIZATIONS') or not hasattr(self, 'CIDERACTIVERESOURCES'):
+            self.Identify_CIDERACTIVE(allresources)
+        if organization and organization in self.CIDERACTIVEORGANIZATIONS:
             return(True)
-        if resource and resource in self.RDRACTIVERESOURCES:
+        if resource and resource in self.CIDERACTIVERESOURCES:
             return(True)
         return(False)
     #
-    # Parallels the filter in django_xsede_warehouse/rdr_db.filters.py except:
+    # Parallels the filter in Operations_Warehouse_Django/cider.filters.py except:
     # - All provider_levels
     # - Doesn't have to be allocated
     #
-    def Identity_RDRACTIVE(self, allresources):
+    def Identify_CIDERACTIVE(self, allresources):
         active_status_set = set(['friendly', 'coming soon', 'pre-production', 'production', 'post-production'])
-        excluded_resourceid_set = set(['stand-alone.tg.teragrid.org', 'futuregrid0.futuregrid.xsede.org', 'Abe-QB-Grid.teragrid.org'])
-        self.RDRACTIVEORGANIZATIONS = {844: True, 2438: True}  # Keyed by organization_id, NCSA and XSEDE
-        self.RDRACTIVERESOURCES = {}            # Keyed by info_resourceid
+        self.CIDERACTIVEORGANIZATIONS = {358: True, 831: True, 832: True, 833: True, 834: True, 835: True}  # ACCESS and affiliated projects
+        self.CIDERACTIVERESOURCES = {}            # Keyed by info_resourceid
         for baseresource in allresources:
-            if baseresource['project_affiliation'] != 'XSEDE' or \
+            if baseresource['project_affiliation'] != 'ACCESS' or \
                     baseresource['xsede_services_only'] or \
-                    baseresource['info_resourceid'] in excluded_resourceid_set or \
                     not list(set(baseresource['current_statuses']) & active_status_set):        # This finds the intersection
                 continue
             for subtype in ['compute_resources', 'storage_resources']:
@@ -487,84 +480,10 @@ class Router():
                     if not list(set(subresource['current_statuses']) & active_status_set):      # This finds the intersection
                         continue
                     # We now have an active sub-resource, add it, its baseresource, and its organizations
-                    self.RDRACTIVERESOURCES[subresource['info_resourceid']] = True
-                    self.RDRACTIVERESOURCES[baseresource['info_resourceid']] = True
+                    self.CIDERACTIVERESOURCES[subresource['info_resourceid']] = True
+                    self.CIDERACTIVERESOURCES[baseresource['info_resourceid']] = True
                     for org in baseresource['organizations']:
-                        self.RDRACTIVEORGANIZATIONS[org['organization_id']] = True
-    #
-    # This function populates self.RSPGW_NAME_URNMAP
-    #
-    def Write_RSP_Gateway_Providers(self, content, contype, config):
-        start_utc = datetime.now(timezone.utc)
-        myRESGROUP = 'Organizations'
-        myRESTYPE = 'Online Service'
-        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
-        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
-        
-        cur = {}   # Current items
-        new = {}   # New items
-        for item in ResourceV3Local.objects.filter(Affiliation__exact = self.Affiliation).filter(ID__startswith = config['URNPREFIX']):
-            cur[item.ID] = item
-
-        for item in content[contype]:
-            myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            if item.get('Name'):
-                self.RSPGW_NAME_URNMAP[item['Name']] = myGLOBALURN
-            try:
-                local, created = ResourceV3Local.objects.update_or_create(
-                            ID = myGLOBALURN,
-                            defaults = {
-                                'CreationTime': datetime.now(timezone.utc),
-                                'Validity': self.DefaultValidity,
-                                'Affiliation': self.Affiliation,
-                                'LocalID': item['DrupalNodeid'],
-                                'LocalType': config['LOCALTYPE'],
-                                'LocalURL': item.get('DrupalUrl', config.get('SOURCEDEFAULTURL', None)),
-                                'CatalogMetaURL': self.CATALOGURN_to_URL(config['CATALOGURN']),
-                                'EntityJSON': item
-                            })
-                local.save()
-            except Exception as e:
-                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-            new[myGLOBALURN] = local
-                
-            try:
-                ShortDescription = 'The {} Science Gateway Project'.format(item['Name'])
-                Description = Format_Description(item.get('Description'))
-                resource, created = ResourceV3.objects.update_or_create(
-                            ID = myGLOBALURN,
-                            defaults = {
-                                'Affiliation': self.Affiliation,
-                                'LocalID': item['DrupalNodeid'],
-                                'QualityLevel': 'Production',
-                                'Name': item['Name'],
-                                'ResourceGroup': myRESGROUP,
-                                'Type': myRESTYPE,
-                                'ShortDescription': ShortDescription,
-                                'ProviderID': None,
-                                'Description': Description.html(ID=myGLOBALURN),
-                                'Topics': item['FieldScience'],
-                                'Keywords': None,
-                                'Audience': self.Affiliation
-                            })
-                resource.save()
-                if self.ESEARCH:
-                    resource.indexing()
-            except Exception as e:
-                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-                
-            self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
-            self.STATS.update({me + '.Update'})
-
-        self.Delete_OLD(me, cur, new)
-
-        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.Log_STEP(me)
-        return(0, '')
+                        self.CIDERACTIVEORGANIZATIONS[org['organization_id']] = True
 
     ####################################
     #
@@ -579,7 +498,7 @@ class Router():
 
         cur = {}   # Current items
         new = {}   # New items
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
+        for item in ResourceV4Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
             cur[item.ID] = item
 
         for item in content[contype]:
@@ -589,7 +508,7 @@ class Router():
                 myINFOURL = 'https://info.xsede.org/wh1/xcsr-db/v1/supportcontacts/globalid/{}/'.format(item['GlobalID'])
                 self.RSPSUPPORT_URL_URNMAP[myINFOURL] = myGLOBALURN
             try:
-                local, created = ResourceV3Local.objects.update_or_create(
+                local, created = ResourceV4Local.objects.update_or_create(
                             ID = myGLOBALURN,
                             defaults = {
                                 'CreationTime': datetime.now(timezone.utc),
@@ -615,7 +534,7 @@ class Router():
                 for c in ['ContactURL', 'ContactEmail', 'ContactPhone']:
                     if item.get(c):
                         Description.append('- {} is {}'.format(c, item[c]))
-                resource, created = ResourceV3.objects.update_or_create(
+                resource, created = ResourceV4.objects.update_or_create(
                             ID = myGLOBALURN,
                             defaults = {
                                 'Affiliation': self.Affiliation,
@@ -632,7 +551,7 @@ class Router():
                                 'Audience': self.Affiliation
                             })
                 resource.save()
-                if self.ESEARCH:
+                if self.OPENSEARCH:
                     resource.indexing()
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
@@ -648,226 +567,7 @@ class Router():
         self.Log_STEP(me)
         return(0, '')
         
-    ####################################
-    def Write_RSP_Vendor_Software(self, content, contype, config):
-        start_utc = datetime.now(timezone.utc)
-        myRESGROUP = 'Software'
-        myRESTYPE = 'Vendor Software'
-        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
-        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
 
-        cur = {}     # Current items
-        new = {}     # New items
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
-            cur[item.ID] = item
-
-        for item in content[contype]:
-            myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            # The new relations for this item, key=related ID, value=type of relation
-            myNEWRELATIONS = {}
-            # Items can have a related ProviderID (Vendor), SupportOrganizationGlobalID, ParentComponentID (Element)
-            # Set relations: Provided By (Vendor), Supported By, Element Of (Parent)
-            if item.get('ParentNodeid'):
-                parentURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['ParentNodeid'])
-                myNEWRELATIONS[parentURN] = 'Component Of'
-            mySupportURN = None
-            providerURN = None
-            if item.get('Vendor') == 'Globus':
-                mySupportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1565'
-            elif item.get('Vendor') == 'XSEDE':
-                mySupportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1553'
-                providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rdr:resource.organizations:2438'
-            elif item.get('Vendor') == 'NCSA':
-                mySupportURN = 'urn:ogf:glue2:info.xsede.org:resource:rsp:support.organizations:drupalnodeid:1553'
-                providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rdr:resource.organizations:844'
-            if mySupportURN:
-                myNEWRELATIONS[mySupportURN] = 'Supported By'
-            if providerURN:
-                myNEWRELATIONS[providerURN] = 'Provided By'
-                
-            try:
-                local, created = ResourceV3Local.objects.update_or_create(
-                            ID = myGLOBALURN,
-                            defaults = {
-                                'CreationTime': datetime.now(timezone.utc),
-                                'Validity': self.DefaultValidity,
-                                'Affiliation': self.Affiliation,
-                                'LocalID': item['DrupalNodeid'],
-                                'LocalType': config['LOCALTYPE'],
-                                'LocalURL': item.get('DrupalUrl', config.get('SOURCEDEFAULTURL', None)),
-                                'CatalogMetaURL': self.CATALOGURN_to_URL(config['CATALOGURN']),
-                                'EntityJSON': item
-                            })
-                local.save()
-            except Exception as e:
-                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-            new[myGLOBALURN] = local
-                
-            try:
-                ShortDescription = None
-                Description = Format_Description(item.get('Description'))
-                Description.blank_line()
-                if item.get('VendorSoftwareURL'):
-                    Description.append('- Vendor Software URL: ' + item.get('VendorSoftwareURL'))
-                if item.get('RelatedDiscussionForums'):
-                    Description.append('- Related Discussion Forum: ' + item.get('RelatedDiscussionForums'))
-#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                resource,created = ResourceV3.objects.update_or_create(
-                            ID = myGLOBALURN,
-                            defaults = {
-                                'Affiliation': self.Affiliation,
-                                'LocalID': item['DrupalNodeid'],
-                                'QualityLevel': 'Production',
-                                'Name': item['CommonName'],
-                                'ResourceGroup': myRESGROUP,
-                                'Type': myRESTYPE,
-                                'ShortDescription': ShortDescription,
-                                'ProviderID': providerURN,
-                                'Description': Description.html(ID=myGLOBALURN),
-                                'Topics': None,
-                                'Keywords': item['Tags'],
-                                'Audience': self.Affiliation
-                            })
-                resource.save()
-                if self.ESEARCH:
-                    resource.indexing(relations=myNEWRELATIONS)
-            except Exception as e:
-                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-
-            self.Update_REL(myGLOBALURN, myNEWRELATIONS)
-
-            self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
-            self.STATS.update({me + '.Update'})
- 
-        self.Delete_OLD(me, cur, new)
-
-        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.Log_STEP(me)
-        return(0, '')
-
-    ####################################
-    def Write_RSP_Network_Service(self, content, contype, config):
-        start_utc = datetime.now(timezone.utc)
-        myRESGROUP = 'Software'
-        myRESTYPE = 'Online Service'
-        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
-        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
-
-        cur = {}     # Current items
-        new = {}     # New items
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
-            cur[item.ID] = item
-
-        for item in content[contype]:
-            if item['AccessType'] != 'Network Service':
-                continue
-            myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            # The new relations for this item, key=related ID, value=type of relation
-            myNEWRELATIONS = {}
-            
-            # Items can have HostingResourceID and related SiteID, ScienceGatewayName, SupportOrganizationGlobalID
-            # Set relations: Gateway Integrated, Hosted On, Supported By
-            gatewayURN = self.RSPGW_NAME_URNMAP.get(item.get('ScienceGatewayName', ''))
-            try:
-                myResourceURN = self.RDRRESOURCE_INFOID_URNMAP[item['HostingResourceID']]
-            except:
-                myResourceURN = None
-                
-            try:
-                siteURN = self.RDRRESOURCE_URN_INFO[myResourceURN]['ProviderID']
-            except:
-                siteURN = None
-            if not siteURN and item.get('SupportOrganizationGlobalID', '') == 'helpdesk.xsede.org':
-                try: # Hardcode the RDR OrgID for "XSEDE"
-                    siteURN = self.RDRPROVIDER_ORGID_URNMAP['2438']
-                except:
-                    pass
-
-            try:
-                mySupportURN = self.RSPSUPPORT_GLOBALID_URNMAP[item['SupportOrganizationGlobalID']]
-            except:
-                mySupportURN = None
-
-            providerURN = gatewayURN or siteURN
-            if providerURN:
-                myNEWRELATIONS[providerURN] = 'Provided By'
-            if gatewayURN:
-                myNEWRELATIONS[gatewayURN] = 'Gateway Integrated'
-            if myResourceURN:
-                myNEWRELATIONS[myResourceURN] = 'Hosted On'
-            if mySupportURN:
-                myNEWRELATIONS[mySupportURN] = 'Supported By'
-            try:
-                local, created = ResourceV3Local.objects.update_or_create(
-                            ID = myGLOBALURN,
-                            defaults = {
-                                'CreationTime': datetime.now(timezone.utc),
-                                'Validity': self.DefaultValidity,
-                                'Affiliation': self.Affiliation,
-                                'LocalID': item['DrupalNodeid'],
-                                'LocalType': config['LOCALTYPE'],
-                                'LocalURL': item.get('DrupalUrl', config.get('SOURCEDEFAULTURL', None)),
-                                'CatalogMetaURL': self.CATALOGURN_to_URL(config['CATALOGURN']),
-                                'EntityJSON': item
-                            })
-                local.save()
-            except Exception as e:
-                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-            new[myGLOBALURN] = local
-                
-            try:
-                ShortDescription = None
-                Description = Format_Description(item.get('Description') or item.get('Title') or None)
-                Description.blank_line()
-                if item.get('NetworkServiceEndpoints'):
-                    Description.append('- Service Access URL: {}'.format(item.get('NetworkServiceEndpoints')))
-                if item.get('UserDocumentationURL'):
-                    Description.append('- Service Documentation: {}'.format(item.get('UserDocumentationURL')))
-                if item.get('VendorSoftwareURL') and item.get('NetworkServiceEndpoints') and item.get('VendorSoftwareURL') != item.get('NetworkServiceEndpoints'):
-                    Description.append('- Vendor Software URL: {}'.format(item.get('VendorSoftwareURL')))
-                if item.get('VendorURL') and item.get('VendorSoftwareURL') and item.get('VendorURL') != item.get('VendorSoftwareURL'):
-                    Description.append('- Vendor URL: {}'.format(item.get('VendorURL')))
-#                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                resource, created = ResourceV3.objects.update_or_create(
-                            ID = myGLOBALURN,
-                            defaults = {
-                                'Affiliation': self.Affiliation,
-                                'LocalID': item['DrupalNodeid'],
-                                'QualityLevel': item.get('ServingState', 'Production').capitalize(),
-                                'Name': item['Title'],
-                                'ResourceGroup': myRESGROUP,
-                                'Type': myRESTYPE,
-                                'ShortDescription': ShortDescription,
-                                'ProviderID': providerURN,
-                                'Description': Description.html(ID=myGLOBALURN),
-                                'Topics': None,
-                                'Keywords': item['Keywords'],
-                                'Audience': self.Affiliation
-                            })
-                resource.save()
-                if self.ESEARCH:
-                    resource.indexing(relations=myNEWRELATIONS)
-            except Exception as e:
-                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-
-            self.Update_REL(myGLOBALURN, myNEWRELATIONS)
-
-            self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
-            self.STATS.update({me + '.Update'})
-            
-        self.Delete_OLD(me, cur, new)
-
-        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.Log_STEP(me)
-        return(0, '')
 
     ####################################
     def Write_Glue2_Network_Service(self, content, contype, config):
@@ -879,18 +579,18 @@ class Router():
 
         cur = {}   # Current items
         new = {}   # New items
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
+        for item in ResourceV4Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
             cur[item.ID] = item
 
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
             try:
-                myResourceURN = self.RDRRESOURCE_INFOID_URNMAP[item['ResourceID']]
+                myResourceURN = self.CIDERRESOURCE_INFOID_URNMAP[item['ResourceID']]
             except:
                 msg = 'Undefined ResourceID={} in Local ID={}'.format(item['ResourceID'], myGLOBALURN)
                 self.logger.error(msg)
                 continue
-            providerURN = self.RDRRESOURCE_URN_INFO[myResourceURN]['ProviderID']
+            providerURN = self.CIDERRESOURCE_URN_INFO[myResourceURN]['ProviderID']
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
             if providerURN:
@@ -923,7 +623,7 @@ class Router():
             LocalURL = '{}/glue2-views-api/v1/services/ID/{}/'.format(self.WAREHOUSE_API_PREFIX, item['ID'])
 
             try:
-                local, created = ResourceV3Local.objects.update_or_create(
+                local, created = ResourceV4Local.objects.update_or_create(
                             ID = myGLOBALURN,
                             defaults = {
                                 'CreationTime': item.get('CreationTime', datetime.now(timezone.utc)),
@@ -948,11 +648,11 @@ class Router():
                 if item.get('URL'):
                     Description.append('- Service URL: {}'.format(item.get('URL')))
                 try:
-                    Description.append('- Running on {} ({})'.format(self.RDRRESOURCE_URN_INFO[myResourceURN]['Name'], item['ResourceID']))
+                    Description.append('- Running on {} ({})'.format(self.CIDERRESOURCE_URN_INFO[myResourceURN]['Name'], item['ResourceID']))
                 except:
                     pass
 #                if not bool(BeautifulSoup(Description, "html.parser").find()):      # Test for pre-existing HTML
-                resource, created = ResourceV3.objects.update_or_create(
+                resource, created = ResourceV4.objects.update_or_create(
                             ID = myGLOBALURN,
                             defaults = {
                                 'Affiliation': self.Affiliation,
@@ -969,7 +669,7 @@ class Router():
                                 'Audience': self.Affiliation
                             })
                 resource.save()
-                if self.ESEARCH:
+                if self.OPENSEARCH:
                     resource.indexing(relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
@@ -987,118 +687,6 @@ class Router():
         self.Log_STEP(me)
         return(0, '')
 
-    ####################################
-    def Write_RSP_Executable_Software(self, content, contype, config):
-        start_utc = datetime.now(timezone.utc)
-        myRESGROUP = 'Software'
-        myRESTYPE = 'Executable Software'
-        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
-        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
-
-        cur = {}   # Current items
-        new = {}   # New items
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
-            cur[item.ID] = item
-
-        for item in content[contype]:
-            if item['AccessType'] != 'Execution Environment':
-                continue
-            myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-                
-            # The new relations for this item, key=related ID, value=type of relation
-            myNEWRELATIONS = {}
-
-            try:
-                myResourceURN = self.RDRRESOURCE_INFOID_URNMAP[item['HostingResourceID']]
-                if myResourceURN:
-                    myNEWRELATIONS[myResourceURN] = 'Hosted On'
-            except:
-                myResourceURN = None
-
-            try:
-                myGatewayURN = self.RSPGW_NAME_URNMAP.get(item['ScienceGatewayName'])
-                if myGatewayURN:
-                    myNEWRELATIONS[myGatewayURN] = 'Accessible From'
-            except:
-                myGatewayURN = None
-
-            providerURN = myGatewayURN or myResourceURN
-            if providerURN:
-                myNEWRELATIONS[providerURN] = 'Provided By'
-            
-            try:
-                mySupportURN = self.RSPSUPPORT_GLOBALID_URNMAP[item['SupportOrganizationGlobalID']]
-                if mySupportURN:
-                    myNEWRELATIONS[mySupportURN] = 'Supported By'
-            except:
-                mySupportURN = None
-
-            try:
-                local, created = ResourceV3Local.objects.update_or_create(
-                            ID = myGLOBALURN,
-                            defaults = {
-                                'CreationTime': datetime.now(timezone.utc),
-                                'Validity': self.DefaultValidity,
-                                'Affiliation': self.Affiliation,
-                                'LocalID': item['DrupalNodeid'],
-                                'LocalType': config['LOCALTYPE'],
-                                'LocalURL': item.get('DrupalUrl', config.get('SOURCEDEFAULTURL', None)),
-                                'CatalogMetaURL': self.CATALOGURN_to_URL(config['CATALOGURN']),
-                                'EntityJSON': item
-                            })
-                local.save()
-            except Exception as e:
-                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-            new[myGLOBALURN] = local
-                
-            try:
-                ShortDescription = (item.get('VendorCommonName') or item.get('Title') or '').strip()
-                Description = Format_Description(item.get('Description'))
-                Description.blank_line()
-                if item.get('NetworkServiceEndpoints'):
-                    Description.append('- Service URL: {}'.format(item.get('NetworkServiceEndpoints')))
-                if item.get('UserDocumentationURL'):
-                    Description.append('- Service Documentation: {}'.format(item.get('UserDocumentationURL')))
-                if item.get('VendorSoftwareURL','') != item.get('NetworkServiceEndpoints', ''):
-                    Description.append('- Vendor Product URL: {}'.format(item.get('VendorSoftwareURL')))
-                if item.get('VendorURL','') != item.get('VendorSoftwareURL', ''):
-                    Description.append('- Vendor URL: {}'.format(item.get('VendorURL')))
-                resource, created = ResourceV3.objects.update_or_create(
-                            ID = myGLOBALURN,
-                            defaults = {
-                                'Affiliation': self.Affiliation,
-                                'LocalID': item['DrupalNodeid'],
-                                'QualityLevel': item.get('ServingState', 'Production').capitalize(),
-                                'Name': item['Title'],
-                                'ResourceGroup': myRESGROUP,
-                                'Type': myRESTYPE,
-                                'ShortDescription': ShortDescription,
-                                'ProviderID': providerURN,
-                                'Description': Description.html(ID=myGLOBALURN),
-                                'Topics': None,
-                                'Keywords': item['Keywords'],
-                                'Audience': self.Affiliation
-                            })
-                resource.save()
-                if self.ESEARCH:
-                    resource.indexing(relations=myNEWRELATIONS)
-            except Exception as e:
-                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-
-            self.Update_REL(myGLOBALURN, myNEWRELATIONS)
-
-            self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
-            self.STATS.update({me + '.Update'})
-
-        self.Delete_OLD(me, cur, new)
-
-        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.Log_STEP(me)
-        return(0, '')
 
     ####################################
     def Write_Glue2_Executable_Software(self, content, contype, config):
@@ -1110,18 +698,18 @@ class Router():
 
         cur = {}   # Current items
         new = {}   # New items
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
+        for item in ResourceV4Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
             cur[item.ID] = item
 
         for item in content[contype]:
             myGLOBALURN = item['ID']        # Glue2 entities already have a unique ID
             try:
-                myResourceURN = self.RDRRESOURCE_INFOID_URNMAP[item['ResourceID']]
+                myResourceURN = self.CIDERRESOURCE_INFOID_URNMAP[item['ResourceID']]
             except:
                 msg = 'Undefined ResourceID={} in Local ID={}'.format(item['ResourceID'], myGLOBALURN)
                 self.logger.error(msg)
                 continue
-            providerURN = self.RDRRESOURCE_URN_INFO[myResourceURN]['ProviderID']
+            providerURN = self.CIDERRESOURCE_URN_INFO[myResourceURN]['ProviderID']
             # The new relations for this item, key=related ID, value=type of relation
             myNEWRELATIONS = {}
             if providerURN:
@@ -1136,7 +724,7 @@ class Router():
                 pass
             
             try:
-                local, created = ResourceV3Local.objects.update_or_create(
+                local, created = ResourceV4Local.objects.update_or_create(
                             ID = myGLOBALURN,
                             defaults = {
                                 'CreationTime': item.get('CreationTime', datetime.now(timezone.utc)),
@@ -1144,7 +732,7 @@ class Router():
                                 'Affiliation': self.Affiliation,
                                 'LocalID': item['ID'],
                                 'LocalType': config['LOCALTYPE'],
-                                'LocalURL': '{}/glue2-views-api/v1/software/ID/{}/'.format(self.WAREHOUSE_API_PREFIX, item['ID']),
+                                'LocalURL': '{}/glue2/v1/software_full/ID/{}/'.format(self.WAREHOUSE_API_PREFIX, item['ID']),
                                 'CatalogMetaURL': self.CATALOGURN_to_URL(config['CATALOGURN']),
                                 'EntityJSON': item
                             })
@@ -1175,7 +763,7 @@ class Router():
                 Description = Format_Description(item.get('Description'))
                 Description.blank_line()
                 try:
-                    Description.append('Running on {} ({})'.format(self.RDRRESOURCE_URN_INFO[myResourceURN]['Name'], item['ResourceID']))
+                    Description.append('Running on {} ({})'.format(self.CIDERRESOURCE_URN_INFO[myResourceURN]['Name'], item['ResourceID']))
                 except:
                     pass
                 Handle = item.get('Handle')
@@ -1196,7 +784,7 @@ class Router():
                         Keywords = item.get('Keywords')
                 else:
                     Keywords = None
-                resource, created = ResourceV3.objects.update_or_create(
+                resource, created = ResourceV4.objects.update_or_create(
                             ID = myGLOBALURN,
                             defaults = {
                                 'Affiliation': self.Affiliation,
@@ -1213,109 +801,13 @@ class Router():
                                 'Audience': self.Affiliation
                             })
                 resource.save()
-                if self.ESEARCH:
+                if self.OPENSEARCH:
                     resource.indexing(relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
                 return(False, msg)
 
-            self.Update_REL(myGLOBALURN, myNEWRELATIONS)
-
-            self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
-            self.STATS.update({me + '.Update'})
-
-        self.Delete_OLD(me, cur, new)
-
-        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.Log_STEP(me)
-        return(0, '')
-
-    def Write_RSP_Packaged_Software(self, content, contype, config):
-        start_utc = datetime.now(timezone.utc)
-        myRESGROUP = 'Software'
-        myRESTYPE = 'Packaged Software'
-        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
-        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
-
-        cur = {}   # Current items
-        new = {}   # New items
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
-            cur[item.ID] = item
-
-        for item in content[contype]:
-            myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], 'drupalnodeid', item['DrupalNodeid'])
-            # The new relations for this item, key=related ID, value=type of relation
-            myNEWRELATIONS = {}
-            mySupportOrgID = item.get('SupportOrganizationGlobalID','')
-            if mySupportOrgID == 'helpdesk.xsede.org':
-                providerURN = 'urn:ogf:glue2:info.xsede.org:resource:rdr:resource.organizations:2438'
-                myNEWRELATIONS[providerURN] = 'Provided By'
-            else: # TODO: Handle other Support Orgs
-                providerURN = None
-            mySupportURN = self.RSPSUPPORT_GLOBALID_URNMAP.get(mySupportOrgID, None)
-            if mySupportURN:
-                myNEWRELATIONS[mySupportURN] = 'Supported By'
-
-            try:
-                local, created = ResourceV3Local.objects.update_or_create(
-                            ID = myGLOBALURN,
-                            defaults = {
-                                'CreationTime': datetime.now(timezone.utc),
-                                'Validity': self.DefaultValidity,
-                                'Affiliation': self.Affiliation,
-                                'LocalID': item['DrupalNodeid'],
-                                'LocalType': config['LOCALTYPE'],
-                                'LocalURL': item.get('DrupalUrl', config.get('SOURCEDEFAULTURL', None)),
-                                'CatalogMetaURL': self.CATALOGURN_to_URL(config['CATALOGURN']),
-                                'EntityJSON': item
-                            })
-                local.save()
-            except Exception as e:
-                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-            new[myGLOBALURN] = local
-                
-            try: #TODO
-                ShortDescription = item.get('Title','').strip()
-                Description = Format_Description(item.get('Description'))
-                Description.blank_line()
-                TargetAudience = item.get('TargetAudience')
-                if TargetAudience:
-                    Description.append('For target audience: {}'.format(TargetAudience))
-                PackageURL = item.get('PackageURL')
-                Description.blank_line()
-                if PackageURL:
-                    PackageFormat = '({})'.format(item.get('PackageFormat')) if item.get('PackageFormat') else ''
-                    Description.append('- Package {} URL: {}'.format(PackageFormat, PackageURL))
-                ProvisioningInstructionsURL = item.get('ProvisioningInstructionsURL')
-                if ProvisioningInstructionsURL:
-                    Description.append('- Installation Instructions: {}'.format(ProvisioningInstructionsURL))
-                resource, created = ResourceV3.objects.update_or_create(
-                            ID = myGLOBALURN,
-                            defaults = {
-                                'Affiliation': self.Affiliation,
-                                'LocalID': item['DrupalNodeid'],
-                                'QualityLevel': item.get('DeclaredStatus', 'Production').capitalize(),
-                                'Name': item.get('Title', item.get('VendorSoftwareCommonName', '')),
-                                'ResourceGroup': myRESGROUP,
-                                'Type': myRESTYPE,
-                                'ShortDescription': ShortDescription,
-                                'ProviderID': providerURN,
-                                'Description': Description.html(ID=myGLOBALURN),
-                                'Topics': None,
-                                'Keywords': item['Keywords'],
-                                'Audience': self.Affiliation
-                            })
-                resource.save()
-                if self.ESEARCH:
-                    resource.indexing(relations=myNEWRELATIONS)
-            except Exception as e:
-                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                self.logger.error(msg)
-                return(False, msg)
-                
             self.Update_REL(myGLOBALURN, myNEWRELATIONS)
 
             self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
@@ -1329,11 +821,11 @@ class Router():
 
 
     #####################################################################
-    # Function for loading RDR (Resource Description Repository) data
-    # Load RDR's organization data to ResourceV3 tables (local, standard)
-    # This function clears and re-populates self.RDRPROVIDER_ORGID_URNMAP in each iteration
+    # Function for loading CIDER (CyberInfrastructure Description Repository) data
+    # Load CIDER's organization data to ResourceV4 tables (local, standard)
+    # This function clears and re-populates self.CIDERPROVIDER_ORGID_URNMAP in each iteration
     #
-    def Write_RDR_Providers(self, content, contype, config):
+    def Write_CIDER_Organizations(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
         myRESGROUP = 'Organizations'
         myRESTYPE = 'Provider'
@@ -1341,31 +833,31 @@ class Router():
         self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
         localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/organizations/'
 
-        self.RDRPROVIDER_ORGID_URNMAP = {}    # Clear
+        self.CIDERPROVIDER_ORGID_URNMAP = {}    # Clear
         cur = {}   # Current items
         new = {}   # New items
         # get existing organization data from local table
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
+        for item in ResourceV4Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
             cur[item.ID] = item
 
         for item in content[contype]['resources'] :
             # Support multiple organiztion cases 
             for orgs in item['organizations']:
-                if not self.Is_Active_RDR(content[contype]['resources'], organization=orgs['organization_id']):
+                if not self.Is_Active_CIDER(content[contype]['resources'], organization=orgs['organization_id']):
                     continue
                 myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(orgs['organization_id']))
 
                 # Skip if this org already processed
-                if myGLOBALURN == self.RDRPROVIDER_ORGID_URNMAP.get(orgs['organization_id']):
+                if myGLOBALURN == self.CIDERPROVIDER_ORGID_URNMAP.get(orgs['organization_id']):
                     continue
 
                 # This will be used when resource data is loading for relationship connections
-                self.RDRPROVIDER_ORGID_URNMAP[orgs['organization_id']] = myGLOBALURN
+                self.CIDERPROVIDER_ORGID_URNMAP[orgs['organization_id']] = myGLOBALURN
 
                 # --------------------------------------------
-                # update ResourceV3 (local) table
+                # update ResourceV4 (local) table
                 try:
-                    local, created = ResourceV3Local.objects.update_or_create(
+                    local, created = ResourceV4Local.objects.update_or_create(
                                 ID = myGLOBALURN,
                                 defaults = {
                                     'CreationTime': datetime.now(timezone.utc),
@@ -1385,7 +877,7 @@ class Router():
                 new[myGLOBALURN] = local
 
                 # --------------------------------------------
-                # update ResourceV3 (standard) table
+                # update ResourceV4 (standard) table
                 try:
                     Name = orgs['organization_name']
                     if orgs.get('organization_abbreviation'):
@@ -1405,7 +897,7 @@ class Router():
                     if orgs.get('organization_url'):
                         Description.append('- Organization URL: {}'.format(orgs.get('organization_url')))
 
-                    resource, created = ResourceV3.objects.update_or_create(
+                    resource, created = ResourceV4.objects.update_or_create(
                                 ID = myGLOBALURN,
                                 defaults = {
                                     'Affiliation': self.Affiliation,
@@ -1417,12 +909,12 @@ class Router():
                                     'ShortDescription': ShortDescription,
                                     'ProviderID': None,
                                     'Description': Description.html(ID=myGLOBALURN),
-                                    'Topics': 'HPC, XSEDE',
+                                    'Topics': 'HPC, ACCESS-CI',
                                     'Keywords': orgs['organization_abbreviation'],
                                     'Audience': self.Affiliation
                                 })
                     resource.save()
-                    if self.ESEARCH:
+                    if self.OPENSEARCH:
                         resource.indexing()
                 except Exception as e:
                     msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
@@ -1439,12 +931,12 @@ class Router():
         return(0, '')
 
     #################################################################################
-    # Function for loading RDR (Resource Description Repository) data
-    # Load RDR's base-resource data to ResourceV3 tables (local, standard, relation)
-    # This function populates self.RDRRESOURCE_BASEID_URNMAP
-    # This function populates self.RDRRESOURCE_INFOID_URNMAP
+    # Function for loading CIDER (CyberInfrastructure Resource Description Repository) data
+    # Load CIDER's base-resource data to ResourceV4 tables (local, standard, relation)
+    # This function populates self.CIDERRESOURCE_BASEID_URNMAP
+    # This function populates self.CIDERRESOURCE_INFOID_URNMAP
     #
-    def Write_RDR_BaseResources(self, content, contype, config):
+    def Write_CIDER_BaseResources(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
         myRESGROUP = 'Computing Tools and Services'
         myRESTYPE = 'Research Computing'
@@ -1455,20 +947,20 @@ class Router():
         cur = {}   # Current items
         new = {}   # New items
         # get existing base resource data from local table
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
+        for item in ResourceV4Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
             cur[item.ID] = item
         
         for item in content[contype]['resources'] :
-            if not self.Is_Active_RDR(content[contype]['resources'], resource=item['info_resourceid']):
+            if not self.Is_Active_CIDER(content[contype]['resources'], resource=item['info_resourceid']):
                 continue
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(item['resource_id']))
 
-            self.RDRRESOURCE_BASEID_URNMAP[item['resource_id']] = myGLOBALURN
+            self.CIDERRESOURCE_BASEID_URNMAP[item['resource_id']] = myGLOBALURN
             if item.get('info_resourceid'):
-                self.RDRRESOURCE_INFOID_URNMAP[item['info_resourceid']] = myGLOBALURN
+                self.CIDERRESOURCE_INFOID_URNMAP[item['info_resourceid']] = myGLOBALURN
             
             # --------------------------------------------
-            # prepare for ResourceV3 (relation) table
+            # prepare for ResourceV4 (relation) table
             # update occurs later
 
             # The new relations for this item, key=related ID, value=type of relation
@@ -1477,10 +969,10 @@ class Router():
             # only the first organization for ProviderID of standard table 
             myProviderID = None
             for orgs in item['organizations']:
-                orgURN = self.RDRPROVIDER_ORGID_URNMAP.get(orgs.get('organization_id', ''), None)
+                orgURN = self.CIDERPROVIDER_ORGID_URNMAP.get(orgs.get('organization_id', ''), None)
                 if orgURN:
                     if not myProviderID:    # save only the first provider
-                        myProviderID = self.RDRPROVIDER_ORGID_URNMAP.get(orgs['organization_id'])
+                        myProviderID = self.CIDERPROVIDER_ORGID_URNMAP.get(orgs['organization_id'])
                     # set relation with organizations
                     myNEWRELATIONS[orgURN] = 'Provided By'
 
@@ -1492,9 +984,9 @@ class Router():
             LocalURL = item.get('public_url', (localUrlPrefix + str(item['resource_id'])) )
 
             # --------------------------------------------
-            # update ResourceV3 (local) table
+            # update ResourceV4 (local) table
             try:
-                local, created = ResourceV3Local.objects.update_or_create(
+                local, created = ResourceV4Local.objects.update_or_create(
                             ID = myGLOBALURN,
                             defaults = {
                                 'CreationTime': datetime.now(timezone.utc),
@@ -1514,7 +1006,7 @@ class Router():
             new[myGLOBALURN] = local
             
             # --------------------------------------------
-            # update ResourceV3 (standard) table  
+            # update ResourceV4 (standard) table  
 
             # For QalityLevel from rdr.currentStatuses
             if not item['current_statuses']:  # empty cases
@@ -1545,7 +1037,7 @@ class Router():
             ShortDescription = '{} ({}) provided by the {}'.format(item['resource_descriptive_name'], item['info_resourceid'], orgNames)
             Description = Format_Description(item.get('resource_description'))
             try:
-                resource, created = ResourceV3.objects.update_or_create(
+                resource, created = ResourceV4.objects.update_or_create(
                             ID = myGLOBALURN,
                             defaults = {
                                 'Affiliation': self.Affiliation,
@@ -1558,23 +1050,23 @@ class Router():
                                 'ProviderID': myProviderID,
                                 'Description': Description.html(ID=myGLOBALURN),
                                 'Topics': 'HPC',
-                                'Keywords': orgKeywords + ', XSEDE',
+                                'Keywords': orgKeywords + ', ACCESS-CI',
                                 'Audience': self.Affiliation,
                             })
                 resource.save()
-                if self.ESEARCH:
+                if self.OPENSEARCH:
                     resource.indexing(relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
                 return(False, msg)
 
-            self.RDRRESOURCE_URN_INFO[myGLOBALURN] = {
+            self.CIDERRESOURCE_URN_INFO[myGLOBALURN] = {
                 'Name': item['resource_descriptive_name'],
                 'ProviderID': myProviderID
             }
             # --------------------------------------------
-            # update ResourceV3 (relation) table
+            # update ResourceV4 (relation) table
             self.Update_REL(myGLOBALURN, myNEWRELATIONS)
 
             self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
@@ -1588,11 +1080,11 @@ class Router():
 
 
     ################################################################################
-    # Function for loading RDR (Resource Description Repository) data
-    # Load RDR's sub-resource data to ResourceV3 tables (local, standard, relation)
-    # This function populates self.RDRRESOURCE_SUBID_URNMAP
+    # Function for loading CIDER (CyberInfrastructure Resource Description Repository) data
+    # Load CIDER's sub-resource data to ResourceV4 tables (local, standard, relation)
+    # This function populates self.CIDERRESOURCE_SUBID_URNMAP
     #
-    def Write_RDR_SubResources(self, content, contype, config):
+    def Write_CIDER_SubResources(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
         myRESGROUP = 'Computing Tools and Services'
         myRESTYPE = 'Research Computing'
@@ -1602,12 +1094,12 @@ class Router():
         cur = {}   # Current items
         new = {}   # New items
         # get existing sub resource data from local table
-        for item in ResourceV3Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
+        for item in ResourceV4Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
             cur[item.ID] = item
 
         subNameList=['compute_resources', 'storage_resources', 'other_resources', 'grid_resources']
         for item in content[contype]['resources'] :
-            if not self.Is_Active_RDR(content[contype]['resources'], resource=item['info_resourceid']):
+            if not self.Is_Active_CIDER(content[contype]['resources'], resource=item['info_resourceid']):
                 continue
             # iterate different types of sub-resource
             for subName in subNameList:
@@ -1641,11 +1133,11 @@ class Router():
                         myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], subID)
 
                         # --------------------------------------------
-                        # prepare for ResourceV3 (relation) table
+                        # prepare for ResourceV4 (relation) table
                         # update occurs later
 
-                        # update to RDRRESOURCE_SUBID_URNMAP
-                        self.RDRRESOURCE_SUBID_URNMAP[subID] = myGLOBALURN
+                        # update to CIDERRESOURCE_SUBID_URNMAP
+                        self.CIDERRESOURCE_SUBID_URNMAP[subID] = myGLOBALURN
                         # The new relations for this item, key=related ID, value=type of relation
                         myNEWRELATIONS = {}
                         # Support multiple organiztion cases for relation table update,but set
@@ -1655,16 +1147,16 @@ class Router():
                         for orgs in item['organizations']:
                             if orgs.get('organization_url'):
                                 org_urls.append(orgs['organization_url'])
-                            orgURN = self.RDRPROVIDER_ORGID_URNMAP.get(orgs.get('organization_id', ''), None)
+                            orgURN = self.CIDERPROVIDER_ORGID_URNMAP.get(orgs.get('organization_id', ''), None)
                             if orgURN:
                                 # save only the first provider
                                 if not myProviderID:
-                                    myProviderID = self.RDRPROVIDER_ORGID_URNMAP.get(orgs['organization_id'])
+                                    myProviderID = self.CIDERPROVIDER_ORGID_URNMAP.get(orgs['organization_id'])
                                 # set relation with organizations
                                 myNEWRELATIONS[orgURN] = 'Provided By'
 
                         # set relation with base-resource
-                        baseURN = self.RDRRESOURCE_BASEID_URNMAP.get(item.get('resource_id', ''), None)
+                        baseURN = self.CIDERRESOURCE_BASEID_URNMAP.get(item.get('resource_id', ''), None)
                         if baseURN:
                             myNEWRELATIONS[baseURN] = 'Component Of'
                         # set relation with "XSEDE support org"
@@ -1675,9 +1167,9 @@ class Router():
                         LocalURL = item.get('public_url') or (localUrlPrefix + subID)
 
                         # --------------------------------------------
-                        # update ResourceV3 (local) table
+                        # update ResourceV4 (local) table
                         try:
-                            local, created = ResourceV3Local.objects.update_or_create(
+                            local, created = ResourceV4Local.objects.update_or_create(
                                         ID = myGLOBALURN,
                                         defaults = {
                                             'CreationTime': datetime.now(timezone.utc),
@@ -1698,7 +1190,7 @@ class Router():
 
 
                         # --------------------------------------------
-                        # update ResourceV3 (standard) table  
+                        # update ResourceV4 (standard) table  
                         
                         # For QalityLevel from sub.currentStatuses
                         if not sub['current_statuses']:  # empty cases
@@ -1733,7 +1225,7 @@ class Router():
                         for url in org_urls:
                             Description.append('- Organization web site: {}'.format(url))
                         try:
-                            resource, created = ResourceV3.objects.update_or_create(
+                            resource, created = ResourceV4.objects.update_or_create(
                                         ID = myGLOBALURN,
                                         defaults = {
                                             'Affiliation': self.Affiliation,
@@ -1746,11 +1238,11 @@ class Router():
                                             'ProviderID': myProviderID,
                                             'Description': Description.html(ID=myGLOBALURN),
                                             'Topics': topics,
-                                            'Keywords': orgKeywords + ', XSEDE',
+                                            'Keywords': orgKeywords + ', ACCESS-CI',
                                             'Audience': self.Affiliation
                                         })
                             resource.save()
-                            if self.ESEARCH:
+                            if self.OPENSEARCH:
                                 resource.indexing(relations=myNEWRELATIONS)
                         except Exception as e:
                             msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
@@ -1758,7 +1250,7 @@ class Router():
                             return(False, msg)
 
                         # ----------------------------------------
-                        # update ResourceV3 (relation) table
+                        # update ResourceV4 (relation) table
                         self.Update_REL(myGLOBALURN, myNEWRELATIONS)
 
                         self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))

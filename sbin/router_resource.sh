@@ -1,7 +1,7 @@
 #!/bin/sh
 
 ### BEGIN INIT INFO
-# Provides:          route_resource_v3
+# Provides:          route_resource
 # Required-Start:    $remote_fs $syslog
 # Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
@@ -11,9 +11,9 @@
 ### END INIT INFO
 
 ####### Customizations START #######
-APP_NAME=route_resource_v3
-APP_BASE=/soft/warehouse-apps-1.0/Manage-Resource-V3
-WAREHOUSE_BASE=/soft/warehouse-1.0
+APP_NAME=router_resource
+APP_BASE=/soft/applications-2.0/router_resource
+WAREHOUSE_BASE=/soft/warehouse-2.0
 # Override in shell environment
 if [ -z "$PYTHON_BASE" ]; then
     PYTHON_BASE=/soft/python/python-3.7.6-base
@@ -37,9 +37,9 @@ PYTHON_BIN=python3
 export LD_LIBRARY_PATH=${PYTHON_BASE}/lib
 source ${APP_BASE}/python/bin/activate
 
-export PYTHONPATH=${APP_SOURCE}/lib:${WAREHOUSE_SOURCE}/django_xsede_warehouse
-export DJANGO_CONF=${APP_BASE}/conf/django_xsede_warehouse.conf
-export DJANGO_SETTINGS_MODULE=xsede_warehouse.settings
+export PYTHONPATH=${APP_SOURCE}/lib:${WAREHOUSE_SOURCE}/Operations_Warehouse_Django
+export DJANGO_CONF=${APP_BASE}/conf/django_prod_router.conf
+export DJANGO_SETTINGS_MODULE=Operations_Warehouse_Django.settings
 
 do_start () {
     echo -n "Starting ${APP_NAME}:"

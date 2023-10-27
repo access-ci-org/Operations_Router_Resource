@@ -1,3 +1,10 @@
+V2.0.0 2023-09-27 JP
+  - Forked https://github.com/XSEDE/Discovery_Manage-Resource-V3
+  - Convert from XSEDE to ACCESS
+  - Switch to OpenSearch which has no code impact
+  - Switch to ResourceV4 index
+  - Delete or comment out all routing except glue2 application initially (software)
+
 tag-1.2-20220823 JP
   - Transition from rdr.xsede.org to cider.access-ci.org hostname, no other XSEDE to ACCESS CI changes
 
