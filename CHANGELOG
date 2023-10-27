@@ -1,3 +1,6 @@
+v2.0.2 2023-10-27 JP
+  - Fix sbin/router_resource.sh
+
 v2.0.1 2023-10-27 JP
   - Fix sbin/{router_resource.sysconfig,router_resource.service}
 
