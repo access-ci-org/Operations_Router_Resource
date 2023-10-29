@@ -1,3 +1,6 @@
+v2.0.6 2023-10-29 JP
+  - Fix router_resource.service.sh
+
 v2.0.5 2023-10-29 JP
   - Make router_resource.sh minimal to run router interactively, not used to run as daemon or service
 
