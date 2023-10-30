@@ -50,6 +50,7 @@ from django.db import DataError, IntegrityError
 from django.forms.models import model_to_dict
 from django_markup.markup import formatter
 from resource_v4.models import *
+from resource_v4.documents import *
 from warehouse_state.process import ProcessingActivity
 
 import pdb

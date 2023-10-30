@@ -1,3 +1,6 @@
+v2.0.7 2023-10-30 JP
+  - Fix import resource_v4/documents
+
 v2.0.6 2023-10-29 JP
   - Fix router_resource.service.sh
 
