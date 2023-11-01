@@ -51,6 +51,7 @@ from django.forms.models import model_to_dict
 from django_markup.markup import formatter
 from resource_v4.models import *
 from resource_v4.documents import *
+from resource_v4.process import *
 from warehouse_state.process import ProcessingActivity
 
 import pdb
@@ -195,7 +196,7 @@ class Router():
         if django_settings.OSCON:
             self.logger.critical('Warehouse OpenSearch profile={}'.format(django_settings.OSCON))
             self.OPENSEARCH = django_settings.OSCON
-            ResourceV4Index.init()              # Initialize it if it doesn't exist
+            ResourceV4Index.init(using=django_settings.OSCON)              # Initialize it if it doesn't exist
         else:
             self.logger.info('Warehouse OpenSearch profile=NONE')
             self.OPENSEARCH = None
@@ -401,7 +402,7 @@ class Router():
         for URN in [id for id in cur if id not in new]:
             if self.OPENSEARCH:
                 try:
-                    ResourceV4Index.get(id = URN).delete()
+                    ResourceV4Index.get(using = django_settings.OSCON, id = URN).delete()
                 except Exception as e:
                     self.logger.error('{} deleting Elastic id={}: {}'.format(type(e).__name__, URN, e))
             try:
@@ -553,7 +554,7 @@ class Router():
                             })
                 resource.save()
                 if self.OPENSEARCH:
-                    resource.indexing()
+                    ResourceV4Process.index(resource)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -671,7 +672,7 @@ class Router():
                             })
                 resource.save()
                 if self.OPENSEARCH:
-                    resource.indexing(relations=myNEWRELATIONS)
+                    ResourceV4Process.index(resource, relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -803,7 +804,7 @@ class Router():
                             })
                 resource.save()
                 if self.OPENSEARCH:
-                    resource.indexing(relations=myNEWRELATIONS)
+                    ResourceV4Process.index(resource, relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -916,7 +917,7 @@ class Router():
                                 })
                     resource.save()
                     if self.OPENSEARCH:
-                        resource.indexing()
+                        ResourceV4Process.index(resource)
                 except Exception as e:
                     msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                     self.logger.error(msg)
@@ -1056,7 +1057,7 @@ class Router():
                             })
                 resource.save()
                 if self.OPENSEARCH:
-                    resource.indexing(relations=myNEWRELATIONS)
+                    ResourceV4Process.index(resource, relations=myNEWRELATIONS)
             except Exception as e:
                 msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                 self.logger.error(msg)
@@ -1244,7 +1245,7 @@ class Router():
                                         })
                             resource.save()
                             if self.OPENSEARCH:
-                                resource.indexing(relations=myNEWRELATIONS)
+                                ResourceV4Process.index(resource, relations=myNEWRELATIONS)
                         except Exception as e:
                             msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
                             self.logger.error(msg)
