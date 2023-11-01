@@ -210,7 +210,6 @@ class Router():
         self.Affiliation = 'access-ci.org'
         self.DefaultValidity = timedelta(days = 14)
 
-        self.RSPGW_NAME_URNMAP = {}             # RSP Gateway Name map to URN
         self.RSPSUPPORT_GLOBALID_URNMAP = {}    # RSP Support GlobalID map to URN
         self.RSPSUPPORT_URL_URNMAP = {}         # RSP Support Information Services URL map to URN
 
@@ -232,7 +231,7 @@ class Router():
         # Used in Get_HTTP as memory cache for contents
         self.HTTP_CACHE = {}
         self.URL_USE_COUNT = {}
-
+        
         # Loading all the Catalog entries for our affiliation
         self.CATALOGS = {}
         for cat in ResourceV4Catalog.objects.filter(Affiliation__exact=self.Affiliation):
@@ -347,7 +346,7 @@ class Router():
             return(None)
 
         status_code = content.get('status_code')
-        if status_code and status_code != '200':
+        if status_code and str(status_code) != '200':
             self.logger.error('Response status_code error: {}'.format(status_code))
 
         if content.get('results'):
@@ -394,6 +393,17 @@ class Router():
             self.logger.error('Error "{}" parsing file={}'.format(e, file))
             self.exit(1)
 
+    def Logger_Muted(self, logger_function, prefix, extra):
+        if prefix not in self.LOGGER_PREFIXES:   # First time, log normally
+            logger_function(prefix if not extra else ' '.join([prefix, extra]))
+            self.LOGGER_PREFIXES[prefix] = 1
+        elif self.LOGGER_PREFIXES[prefix] == 1:  # Second time, log will MUTE
+            logger_function(' '.join([prefix, 'MUTING FUTURE MESSAGES ...']))
+            self.LOGGER_PREFIXES[prefix] += 1
+        else: # MUTE additional
+            self.LOGGER_PREFIXES[prefix] += 1
+        return
+        
 ########## CUSTOMIZATIONS START ##########
     #
     # Delete old items (those in 'cur') that weren't updated (those in 'new')
@@ -589,8 +599,9 @@ class Router():
             try:
                 myResourceURN = self.CIDERRESOURCE_INFOID_URNMAP[item['ResourceID']]
             except:
-                msg = 'Undefined ResourceID={} in Local ID={}'.format(item['ResourceID'], myGLOBALURN)
-                self.logger.error(msg)
+                self.Logger_Muted(self.logger.error,
+                    'Undefined ResourceID={} in Local'.format(item['ResourceID']),
+                    'ID={}'.format(myGLOBALURN) )
                 continue
             providerURN = self.CIDERRESOURCE_URN_INFO[myResourceURN]['ProviderID']
             # The new relations for this item, key=related ID, value=type of relation
@@ -708,8 +719,9 @@ class Router():
             try:
                 myResourceURN = self.CIDERRESOURCE_INFOID_URNMAP[item['ResourceID']]
             except:
-                msg = 'Undefined ResourceID={} in Local ID={}'.format(item['ResourceID'], myGLOBALURN)
-                self.logger.error(msg)
+                self.Logger_Muted(self.logger.error,
+                    'Undefined ResourceID={} in Local'.format(item['ResourceID']),
+                    'ID={}'.format(myGLOBALURN) )
                 continue
             providerURN = self.CIDERRESOURCE_URN_INFO[myResourceURN]['ProviderID']
             # The new relations for this item, key=related ID, value=type of relation
@@ -1270,6 +1282,7 @@ class Router():
             loop_start_utc = datetime.now(timezone.utc)
             self.STATS = Counter()
             self.PROCESSING_SECONDS = {}
+            self.LOGGER_PREFIXES = {}   # Used by Logger_Muted
 
             for stepconf in self.STEPS:
                 step_start_utc = datetime.now(timezone.utc)
