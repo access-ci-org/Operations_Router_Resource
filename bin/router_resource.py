@@ -953,7 +953,7 @@ class Router():
     def Write_CIDER_BaseResources(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
         myRESGROUP = 'Computing Tools and Services'
-        myRESTYPE = 'Research Computing'
+        myRESTYPE = 'Computing Resources'
         me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
         self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
         localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/resources/id/' 
@@ -1101,7 +1101,7 @@ class Router():
     def Write_CIDER_SubResources(self, content, contype, config):
         start_utc = datetime.now(timezone.utc)
         myRESGROUP = 'Computing Tools and Services'
-        myRESTYPE = 'Research Computing'
+        myRESTYPE = 'Computing Resources'
         me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
         self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
         
