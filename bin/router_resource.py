@@ -775,7 +775,7 @@ class Router():
                 if item.get('AppVersion'):
                     ShortDescription += ' version {}'.format(item['AppVersion'])
                 if myResourceURN:
-                    ShortDescription += ' on {}'.format(myResourceURN]['Name'])
+                    ShortDescription += ' on {}'.format(self.CIDERRESOURCE_URN_INFO[myResourceURN]['Name'])
                 
                 Description = Format_Description(item.get('Description'))
                 Description.blank_line()

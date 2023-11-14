@@ -1,3 +1,6 @@
+v2.2.2 2023-11-14 JP
+  - Fix syntax error
+
 v2.2.1 2023-11-14 JP
   - Add resource information to ShoftDescription
   - Improve full Description formatting
