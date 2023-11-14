@@ -773,19 +773,23 @@ class Router():
 
                 ShortDescription = item.get('AppName')
                 if item.get('AppVersion'):
-                    ShortDescription += ' Version {}'.format(item['AppVersion'])
+                    ShortDescription += ' version {}'.format(item['AppVersion'])
+                if myResourceURN:
+                    ShortDescription += ' on {}'.format(myResourceURN]['Name'])
+                
                 Description = Format_Description(item.get('Description'))
                 Description.blank_line()
                 try:
-                    Description.append('Running on {} ({})'.format(self.CIDERRESOURCE_URN_INFO[myResourceURN]['Name'], item['ResourceID']))
+                    Description.append('Available on {} ({})'.format(self.CIDERRESOURCE_URN_INFO[myResourceURN]['Name'], item['ResourceID']))
                 except:
                     pass
                 Handle = item.get('Handle')
                 if Handle:
+                    Description.blank_line()
                     if Handle.get('HandleType','').lower() == 'module' and Handle.get('HandleKey'):
-                        Description.append('To access from a shell use the command:\n\n  module load {}'.format(Handle.get('HandleKey')))
+                        Description.append('Access from a shell using the command:\n  module load {}'.format(Handle.get('HandleKey')))
                     elif Handle.get('HandleType','').lower() == 'valet' and Handle.get('HandleKey'):
-                        Description.append('To access from a shell use the command:\n\n  vpkg_require {}'.format(Handle.get('HandleKey')))
+                        Description.append('Access from a shell using the command:\n  vpkg_require {}'.format(Handle.get('HandleKey')))
 
                 if item.get('Domain'):
                     Domain = ','.join(item['Domain'])

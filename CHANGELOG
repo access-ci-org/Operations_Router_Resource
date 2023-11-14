@@ -1,3 +1,10 @@
+v2.2.1 2023-11-14 JP
+  - Add resource information to ShoftDescription
+  - Improve full Description formatting
+
+v2.1.1 2023-11-02 JP
+  - Change urn prefixes from 'urn:ogf:..' to 'urn:ogf.org:..'
+
 v2.1.0 2023-11-02 JP
   - Change resource Type 'Research Computing' to 'Computing Resources'
 
