@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Router to synchronize RSP, GLUE2, and CIDER informaton into the Warehouse Resource tables
+# Router to synchronize CiDeR, GLUE2 informaton into the Warehouse Resource tables
 #
 # Author: JP Navarro, March 2020
 #         Jonathan Kim, October 2020
@@ -414,13 +414,13 @@ class Router():
                 try:
                     ResourceV4Index.get(using = django_settings.OSCON, id = URN).delete()
                 except Exception as e:
-                    self.logger.error('{} deleting Elastic id={}: {}'.format(type(e).__name__, URN, e))
+                    self.logger.error('{} deleting Elastic id={}: {}'.format(type(e).__name__, URN, str(e)))
             try:
                 ResourceV4Relation.objects.filter(FirstResourceID__exact = URN).delete()
                 ResourceV4.objects.get(pk = URN).delete()
                 ResourceV4Local.objects.get(pk = URN).delete()
             except Exception as e:
-                self.logger.error('{} deleting ID={}: {}'.format(type(e).__name__, URN, e))
+                self.logger.error('{} deleting ID={}: {}'.format(type(e).__name__, URN, str(e)))
             else:
                 self.logger.info('{} deleted ID={}'.format(me, URN))
                 self.STATS.update({me + '.Delete'})
@@ -444,14 +444,14 @@ class Router():
                             })
                 relation.save()
             except Exception as e:
-                msg = '{} saving Relation ID={}: {}'.format(type(e).__name__, relationID, e)
+                msg = '{} saving Relation ID={}: {}'.format(type(e).__name__, relationID, str(e))
                 self.logger.error(msg)
                 return(False, msg)
             newIDS.append(relationID)
         try:
             ResourceV4Relation.objects.filter(FirstResourceID__exact = myURN).exclude(ID__in = newIDS).delete()
         except Exception as e:
-            self.logger.error('{} deleting Relations for Resource ID={}: {}'.format(type(e).__name__, myURN, e))
+            self.logger.error('{} deleting Relations for Resource ID={}: {}'.format(type(e).__name__, myURN, str(e)))
     #
     # Log how long a processing step took
     #
@@ -485,17 +485,13 @@ class Router():
                     baseresource['xsede_services_only'] or \
                     not list(set(baseresource['current_statuses']) & active_status_set):        # This finds the intersection
                 continue
-            for subtype in ['compute_resources', 'storage_resources']:
-                if subtype not in baseresource:
-                    continue
-                for subresource in baseresource[subtype]:       # This is a list
-                    if not list(set(subresource['current_statuses']) & active_status_set):      # This finds the intersection
-                        continue
-                    # We now have an active sub-resource, add it, its baseresource, and its organizations
-                    self.CIDERACTIVERESOURCES[subresource['info_resourceid']] = True
-                    self.CIDERACTIVERESOURCES[baseresource['info_resourceid']] = True
-                    for org in baseresource['organizations']:
-                        self.CIDERACTIVEORGANIZATIONS[org['organization_id']] = True
+            if not baseresource.get('resource_type','') in ['Compute', 'Storage']:
+                continue
+            if not list(set(baseresource.get('current_statuses',[])) & active_status_set):      # This finds the intersection
+                continue
+            self.CIDERACTIVERESOURCES[baseresource['info_resourceid']] = True
+            for org in baseresource['organizations']:
+                self.CIDERACTIVEORGANIZATIONS[org['organization_id']] = True
 
     ####################################
     #
@@ -534,7 +530,7 @@ class Router():
                             })
                 local.save()
             except Exception as e:
-                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, str(e))
                 self.logger.error(msg)
                 return(False, msg)
             new[myGLOBALURN] = local
@@ -566,7 +562,7 @@ class Router():
                 if self.OPENSEARCH:
                     ResourceV4Process.index(resource)
             except Exception as e:
-                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, str(e))
                 self.logger.error(msg)
                 return(False, msg)
                 
@@ -650,7 +646,7 @@ class Router():
                             })
                 local.save()
             except Exception as e:
-                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, str(e))
                 self.logger.error(msg)
                 return(False, msg)
             new[myGLOBALURN] = local
@@ -685,7 +681,7 @@ class Router():
                 if self.OPENSEARCH:
                     ResourceV4Process.index(resource, relations=myNEWRELATIONS)
             except Exception as e:
-                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, str(e))
                 self.logger.error(msg)
                 return(False, msg)
                 
@@ -752,7 +748,7 @@ class Router():
                             })
                 local.save()
             except Exception as e:
-                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, str(e))
                 self.logger.error(msg)
                 return(False, msg)
             new[myGLOBALURN] = local
@@ -822,7 +818,7 @@ class Router():
                 if self.OPENSEARCH:
                     ResourceV4Process.index(resource, relations=myNEWRELATIONS)
             except Exception as e:
-                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, str(e))
                 self.logger.error(msg)
                 return(False, msg)
 
@@ -889,7 +885,7 @@ class Router():
                                 })
                     local.save()
                 except Exception as e:
-                    msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                    msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, str(e))
                     self.logger.error(msg)
                     return(False, msg)
                 new[myGLOBALURN] = local
@@ -935,7 +931,7 @@ class Router():
                     if self.OPENSEARCH:
                         ResourceV4Process.index(resource)
                 except Exception as e:
-                    msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                    msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, str(e))
                     self.logger.error(msg)
                     return(False, msg)
             
@@ -1011,14 +1007,14 @@ class Router():
                                 'Validity': self.DefaultValidity,
                                 'Affiliation': self.Affiliation,
                                 'LocalID': str(item['resource_id']),
-                                'LocalType': 'base-resource',
+                                'LocalType': item['resource_type'],
                                 'LocalURL': LocalURL,
                                 'CatalogMetaURL': self.CATALOGURN_to_URL(config['CATALOGURN']),
                                 'EntityJSON': item
                             })
                 local.save()
             except Exception as e:
-                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, str(e))
                 self.logger.error(msg)
                 return(False, msg)
             new[myGLOBALURN] = local
@@ -1075,7 +1071,7 @@ class Router():
                 if self.OPENSEARCH:
                     ResourceV4Process.index(resource, relations=myNEWRELATIONS)
             except Exception as e:
-                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
+                msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, str(e))
                 self.logger.error(msg)
                 return(False, msg)
 
@@ -1102,184 +1098,183 @@ class Router():
     # Load CIDER's sub-resource data to ResourceV4 tables (local, standard, relation)
     # This function populates self.CIDERRESOURCE_SUBID_URNMAP
     #
-    def Write_CIDER_SubResources(self, content, contype, config):
-        start_utc = datetime.now(timezone.utc)
-        myRESGROUP = 'Computing Tools and Services'
-        myRESTYPE = 'Computing Resources'
-        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
-        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
-        
-        cur = {}   # Current items
-        new = {}   # New items
-        # get existing sub resource data from local table
-        for item in ResourceV4Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
-            cur[item.ID] = item
-
-        subNameList=['compute_resources', 'storage_resources', 'other_resources', 'grid_resources']
-        for item in content[contype]['resources'] :
-            if not self.Is_Active_CIDER(content[contype]['resources'], resource=item['info_resourceid']):
-                continue
-            # iterate different types of sub-resource
-            for subName in subNameList:
-                localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/' + subName + '/id/' 
-
-                res = item.get(subName, None)
-                # if one or more sub-resource type exist
-                if res:
-                    # iterate sub-resource types in base-resource
-                    for sub in item[subName]:
-                        if subName == 'compute_resources':
-                            subID = str(sub['compute_resource_id'])
-                            localType = 'computeResource'
-                            if sub['machine_type']:
-                                topics = 'HPC, Compute, ' + sub['machine_type']
-                            else:
-                                topics = 'HPC, Compute'
-                        elif subName == 'storage_resources':
-                            subID = str(sub['storage_resource_id'])
-                            localType = 'storageResource'
-                            topics = 'HPC, Storage'
-                        elif subName == 'other_resources':
-                            subID =  str(sub['other_resource_id'])
-                            localType = 'otherResource'
-                            topics = 'HPC'  # no adding ', Other' for this
-                        elif subName == 'grid_resources':
-                            subID = str(sub['grid_resource_id'])
-                            localType = 'gridResource'
-                            topics = 'HPC, Grid'
-
-                        myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], subID)
-
-                        # --------------------------------------------
-                        # prepare for ResourceV4 (relation) table
-                        # update occurs later
-
-                        # update to CIDERRESOURCE_SUBID_URNMAP
-                        self.CIDERRESOURCE_SUBID_URNMAP[subID] = myGLOBALURN
-                        # The new relations for this item, key=related ID, value=type of relation
-                        myNEWRELATIONS = {}
-                        # Support multiple organiztion cases for relation table update,but set
-                        # only the first organization for ProviderID of standard table 
-                        myProviderID = None
-                        org_urls = []       # Save to include in Description
-                        for orgs in item['organizations']:
-                            if orgs.get('organization_url'):
-                                org_urls.append(orgs['organization_url'])
-                            orgURN = self.CIDERPROVIDER_ORGID_URNMAP.get(orgs.get('organization_id', ''), None)
-                            if orgURN:
-                                # save only the first provider
-                                if not myProviderID:
-                                    myProviderID = self.CIDERPROVIDER_ORGID_URNMAP.get(orgs['organization_id'])
-                                # set relation with organizations
-                                myNEWRELATIONS[orgURN] = 'Provided By'
-
-                        # set relation with base-resource
-                        baseURN = self.CIDERRESOURCE_BASEID_URNMAP.get(item.get('resource_id', ''), None)
-                        if baseURN:
-                            myNEWRELATIONS[baseURN] = 'Component Of'
-                        # set relation with "XSEDE support org"
-                        mySupportURN = self.RSPSUPPORT_GLOBALID_URNMAP.get('helpdesk.xsede.org', None)
-                        if mySupportURN:
-                            myNEWRELATIONS[mySupportURN] = 'Supported By'
-
-                        LocalURL = item.get('public_url') or (localUrlPrefix + subID)
-
-                        # --------------------------------------------
-                        # update ResourceV4 (local) table
-                        try:
-                            local, created = ResourceV4Local.objects.update_or_create(
-                                        ID = myGLOBALURN,
-                                        defaults = {
-                                            'CreationTime': datetime.now(timezone.utc),
-                                            'Validity': self.DefaultValidity,
-                                            'Affiliation': self.Affiliation,
-                                            'LocalID': subID,
-                                            'LocalType': localType,
-                                            'LocalURL': LocalURL,
-                                            'CatalogMetaURL': self.CATALOGURN_to_URL(config['CATALOGURN']),
-                                            'EntityJSON': sub
-                                        })
-                            local.save()
-                        except Exception as e:
-                            msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                            self.logger.error(msg)
-                            return(False, msg)
-                        new[myGLOBALURN] = local
-
-
-                        # --------------------------------------------
-                        # update ResourceV4 (standard) table  
-                        
-                        # For QalityLevel from sub.currentStatuses
-                        if not sub['current_statuses']:  # empty cases
-                                qualityLevel='Retired'
-                        if 'decommissioned' in sub['current_statuses']:
-                            qualityLevel = 'Retired'
-                        elif set(['friendly', 'production', 'post-production']) & set(sub['current_statuses']):
-                            qualityLevel = 'Production'
-                        elif 'pre-production' in sub['current_statuses']:
-                            qualityLevel = 'Testing'
-                        else: # should not be here if currentStatueses is correct
-                            qualityLevel = 'Retired'
-
-                        # For Keywords, get comma seperated org-abbrev for multiple orgs.
-                        # For ShortDescription, get comma seperated org-name for multiple orgs.
-                        orgKeywords=''
-                        orgNames=''
-                        for orgs in item['organizations']:
-                            if orgKeywords:
-                                orgKeywords += ', '
-                            orgKeywords += orgs['organization_abbreviation']
-                            if orgNames:
-                                orgNames = orgNames.replace('\n', '') + ', '
-                            orgNames += orgs['organization_name']
-                        
-                        # For ShortDescription
-                        ShortDescription = '{} ({}) provided by the {}'.format(sub['resource_descriptive_name'], sub['info_resourceid'], orgNames)
-                        Description = Format_Description(sub.get('resource_description'))
-                        Description.blank_line()
-                        if sub.get('user_guide_url'):
-                            Description.append('- User Guide URL: {}'.format(sub.get('user_guide_url')))
-                        for url in org_urls:
-                            Description.append('- Organization web site: {}'.format(url))
-                        try:
-                            resource, created = ResourceV4.objects.update_or_create(
-                                        ID = myGLOBALURN,
-                                        defaults = {
-                                            'Affiliation': self.Affiliation,
-                                            'LocalID': subID,
-                                            'QualityLevel': qualityLevel,
-                                            'Name': sub['resource_descriptive_name'],
-                                            'ResourceGroup': myRESGROUP,
-                                            'Type': myRESTYPE,
-                                            'ShortDescription': ShortDescription,
-                                            'ProviderID': myProviderID,
-                                            'Description': Description.html(ID=myGLOBALURN),
-                                            'Topics': topics,
-                                            'Keywords': orgKeywords + ', ACCESS-CI',
-                                            'Audience': self.Affiliation
-                                        })
-                            resource.save()
-                            if self.OPENSEARCH:
-                                ResourceV4Process.index(resource, relations=myNEWRELATIONS)
-                        except Exception as e:
-                            msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, e)
-                            self.logger.error(msg)
-                            return(False, msg)
-
-                        # ----------------------------------------
-                        # update ResourceV4 (relation) table
-                        self.Update_REL(myGLOBALURN, myNEWRELATIONS)
-
-                        self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
-                        self.STATS.update({me + '.Update'})
-
-        self.Delete_OLD(me, cur, new)
-
-        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
-        self.Log_STEP(me)
-        return(0, '')
-
+#    def Write_CIDER_SubResources(self, content, contype, config):
+#        start_utc = datetime.now(timezone.utc)
+#        myRESGROUP = 'Computing Tools and Services'
+#        myRESTYPE = 'Computing Resources'
+#        me = '{} to {}({}:{})'.format(sys._getframe().f_code.co_name, self.WAREHOUSE_CATALOG, myRESGROUP, myRESTYPE)
+#        self.PROCESSING_SECONDS[me] = getattr(self.PROCESSING_SECONDS, me, 0)
+#        
+#        cur = {}   # Current items
+#        new = {}   # New items
+#        # get existing sub resource data from local table
+#        for item in ResourceV4Local.objects.filter(Affiliation__exact=self.Affiliation).filter(ID__startswith=config['URNPREFIX']):
+#            cur[item.ID] = item
+#
+#        subNameList=['compute_resources', 'storage_resources', 'other_resources', 'grid_resources']
+#        for item in content[contype]['resources'] :
+#            if not self.Is_Active_CIDER(content[contype]['resources'], resource=item['info_resourceid']):
+#                continue
+#            # iterate different types of sub-resource
+#            for subName in subNameList:
+#                localUrlPrefix = config['SOURCEDEFAULTURL'] + '/xsede-api/provider/rdr/v1/' + subName + '/id/' 
+#
+#                res = item.get(subName, None)
+#                # if one or more sub-resource type exist
+#                if res:
+#                    # iterate sub-resource types in base-resource
+#                    for sub in item[subName]:
+#                        if subName == 'compute_resources':
+#                            subID = str(sub['compute_resource_id'])
+#                            localType = 'computeResource'
+#                            if sub['machine_type']:
+#                                topics = 'HPC, Compute, ' + sub['machine_type']
+#                            else:
+#                                topics = 'HPC, Compute'
+#                        elif subName == 'storage_resources':
+#                            subID = str(sub['storage_resource_id'])
+#                            localType = 'storageResource'
+#                            topics = 'HPC, Storage'
+#                        elif subName == 'other_resources':
+#                            subID =  str(sub['other_resource_id'])
+#                            localType = 'otherResource'
+#                            topics = 'HPC'  # no adding ', Other' for this
+#                        elif subName == 'grid_resources':
+#                            subID = str(sub['grid_resource_id'])
+#                            localType = 'gridResource'
+#                            topics = 'HPC, Grid'
+#
+#                        myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], subID)
+#
+#                        # --------------------------------------------
+#                        # prepare for ResourceV4 (relation) table
+#                        # update occurs later
+#
+#                        # update to CIDERRESOURCE_SUBID_URNMAP
+#                        self.CIDERRESOURCE_SUBID_URNMAP[subID] = myGLOBALURN
+#                        # The new relations for this item, key=related ID, value=type of relation
+#                        myNEWRELATIONS = {}
+#                        # Support multiple organiztion cases for relation table update,but set
+#                        # only the first organization for ProviderID of standard table 
+#                        myProviderID = None
+#                        org_urls = []       # Save to include in Description
+#                        for orgs in item['organizations']:
+#                            if orgs.get('organization_url'):
+#                                org_urls.append(orgs['organization_url'])
+#                            orgURN = self.CIDERPROVIDER_ORGID_URNMAP.get(orgs.get('organization_id', ''), None)
+#                            if orgURN:
+#                                # save only the first provider
+#                                if not myProviderID:
+#                                    myProviderID = self.CIDERPROVIDER_ORGID_URNMAP.get(orgs['organization_id'])
+#                                # set relation with organizations
+#                                myNEWRELATIONS[orgURN] = 'Provided By'
+#
+#                        # set relation with base-resource
+#                        baseURN = self.CIDERRESOURCE_BASEID_URNMAP.get(item.get('resource_id', ''), None)
+#                        if baseURN:
+#                            myNEWRELATIONS[baseURN] = 'Component Of'
+#                        # set relation with "XSEDE support org"
+#                        mySupportURN = self.RSPSUPPORT_GLOBALID_URNMAP.get('helpdesk.xsede.org', None)
+#                        if mySupportURN:
+#                            myNEWRELATIONS[mySupportURN] = 'Supported By'
+#
+#                        LocalURL = item.get('public_url') or (localUrlPrefix + subID)
+#
+#                        # --------------------------------------------
+#                        # update ResourceV4 (local) table
+#                        try:
+#                            local, created = ResourceV4Local.objects.update_or_create(
+#                                        ID = myGLOBALURN,
+#                                        defaults = {
+#                                            'CreationTime': datetime.now(timezone.utc),
+#                                            'Validity': self.DefaultValidity,
+#                                            'Affiliation': self.Affiliation,
+#                                            'LocalID': subID,
+#                                            'LocalType': localType,
+#                                            'LocalURL': LocalURL,
+#                                            'CatalogMetaURL': self.CATALOGURN_to_URL(config['CATALOGURN']),
+#                                            'EntityJSON': sub
+#                                        })
+#                            local.save()
+#                        except Exception as e:
+#                            msg = '{} saving local ID={}: {}'.format(type(e).__name__, myGLOBALURN, str(e))
+#                            self.logger.error(msg)
+#                            return(False, msg)
+#                        new[myGLOBALURN] = local
+#
+#
+#                        # --------------------------------------------
+#                        # update ResourceV4 (standard) table  
+#                        
+#                        # For QalityLevel from sub.currentStatuses
+#                        if not sub['current_statuses']:  # empty cases
+#                                qualityLevel='Retired'
+#                        if 'decommissioned' in sub['current_statuses']:
+#                            qualityLevel = 'Retired'
+#                        elif set(['friendly', 'production', 'post-production']) & set(sub['current_statuses']):
+#                            qualityLevel = 'Production'
+#                        elif 'pre-production' in sub['current_statuses']:
+#                            qualityLevel = 'Testing'
+#                        else: # should not be here if currentStatueses is correct
+#                            qualityLevel = 'Retired'
+#
+#                        # For Keywords, get comma seperated org-abbrev for multiple orgs.
+#                        # For ShortDescription, get comma seperated org-name for multiple orgs.
+#                        orgKeywords=''
+#                        orgNames=''
+#                        for orgs in item['organizations']:
+#                            if orgKeywords:
+#                                orgKeywords += ', '
+#                            orgKeywords += orgs['organization_abbreviation']
+#                            if orgNames:
+#                                orgNames = orgNames.replace('\n', '') + ', '
+#                            orgNames += orgs['organization_name']
+#                        
+#                        # For ShortDescription
+#                        ShortDescription = '{} ({}) provided by the {}'.format(sub['resource_descriptive_name'], sub['info_resourceid'], orgNames)
+#                        Description = Format_Description(sub.get('resource_description'))
+#                        Description.blank_line()
+#                        if sub.get('user_guide_url'):
+#                            Description.append('- User Guide URL: {}'.format(sub.get('user_guide_url')))
+#                        for url in org_urls:
+#                            Description.append('- Organization web site: {}'.format(url))
+#                        try:
+#                            resource, created = ResourceV4.objects.update_or_create(
+#                                        ID = myGLOBALURN,
+#                                        defaults = {
+#                                            'Affiliation': self.Affiliation,
+#                                            'LocalID': subID,
+#                                            'QualityLevel': qualityLevel,
+#                                            'Name': sub['resource_descriptive_name'],
+#                                            'ResourceGroup': myRESGROUP,
+#                                            'Type': myRESTYPE,
+#                                            'ShortDescription': ShortDescription,
+#                                            'ProviderID': myProviderID,
+#                                            'Description': Description.html(ID=myGLOBALURN),
+#                                            'Topics': topics,
+#                                            'Keywords': orgKeywords + ', ACCESS-CI',
+#                                            'Audience': self.Affiliation
+#                                        })
+#                            resource.save()
+#                            if self.OPENSEARCH:
+#                                ResourceV4Process.index(resource, relations=myNEWRELATIONS)
+#                        except Exception as e:
+#                            msg = '{} saving resource ID={}: {}'.format(type(e).__name__, myGLOBALURN, str(e))
+#                            self.logger.error(msg)
+#                            return(False, msg)
+#
+#                        # ----------------------------------------
+#                        # update ResourceV4 (relation) table
+#                        self.Update_REL(myGLOBALURN, myNEWRELATIONS)
+#
+#                        self.logger.debug('{} updated resource ID={}'.format(contype, myGLOBALURN))
+#                        self.STATS.update({me + '.Update'})
+#
+#        self.Delete_OLD(me, cur, new)
+#
+#        self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
+#        self.Log_STEP(me)
+#        return(0, '')
 
     def Run(self):
         while True:
@@ -1341,7 +1336,7 @@ if __name__ == '__main__':
             router.Setup()
             rc = router.Run()
         except Exception as e:
-            msg = '{} Exception: {}'.format(type(e).__name__, e)
+            msg = '{} Exception: {}'.format(type(e).__name__, str(e))
             router.logger.error(msg)
             traceback.print_exc(file=sys.stdout)
             rc = 1
