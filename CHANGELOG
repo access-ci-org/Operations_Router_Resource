@@ -1,3 +1,6 @@
+v2.4.0 2024-02-07 JP
+  - Start publishing CiDeR Science Gateways
+
 v2.3.0 2023-12-08 JP
   - Convert to new CiDeR resource hierarchy with typed resources and no sub-resources
   - Fix exception message display using str(e)

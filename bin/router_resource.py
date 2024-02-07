@@ -485,7 +485,7 @@ class Router():
                     baseresource['xsede_services_only'] or \
                     not list(set(baseresource['current_statuses']) & active_status_set):        # This finds the intersection
                 continue
-            if not baseresource.get('resource_type','') in ['Compute', 'Storage']:
+            if not baseresource.get('resource_type','') in ['Compute', 'Storage', 'Science Gateway']:
                 continue
             if not list(set(baseresource.get('current_statuses',[])) & active_status_set):      # This finds the intersection
                 continue
