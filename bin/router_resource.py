@@ -783,7 +783,10 @@ class Router():
                 if Handle:
                     Description.blank_line()
                     if Handle.get('HandleType','').lower() == 'module' and Handle.get('HandleKey'):
-                        Description.append('Find out more by using the shell command:\n  module spider {}'.format(Handle.get('HandleKey')))
+                        if item['ResourceID'] == "aces.tamu.access-ci.org":
+                            Description.append('Find out more by using the shell command:\n  module spider {}'.format(Handle.get('HandleKey')))
+                        else:
+                            Description.append('Access from a shell using the command:\n  module load {}'.format(Handle.get('HandleKey')))
                     elif Handle.get('HandleType','').lower() == 'valet' and Handle.get('HandleKey'):
                         Description.append('Access from a shell using the command:\n  vpkg_require {}'.format(Handle.get('HandleKey')))
 
