@@ -785,6 +785,12 @@ class Router():
                     if Handle.get('HandleType','').lower() == 'module' and Handle.get('HandleKey'):
                         if item['ResourceID'] == "aces.tamu.access-ci.org":
                             Description.append('Find out more by using the shell command:\n  module spider {}'.format(Handle.get('HandleKey')))
+                        elif item['ResourceID'] == "faster.tamu.access-ci.org":
+                            Description.append('Find out more by using the shell command:\n  module spider {}'.format(Handle.get('HandleKey')))
+                        elif item['ResourceID'] == "anvil.purdue.access-ci.org":
+                            Description.append('Find out more by using the shell command:\n  module spider {}'.format(Handle.get('HandleKey')))
+                        elif item['ResourceID'] == "anvil-gpu.purdue.access-ci.org":
+                            Description.append('Find out more by using the shell command:\n  module spider {}'.format(Handle.get('HandleKey')))
                         else:
                             Description.append('Access from a shell using the command:\n  module load {}'.format(Handle.get('HandleKey')))
                     elif Handle.get('HandleType','').lower() == 'valet' and Handle.get('HandleKey'):
