@@ -866,8 +866,9 @@ class Router():
         for item in content[contype]['resources'] :
             # Support multiple organiztion cases 
             for orgs in item['organizations']:
-                if not self.Is_Active_CIDER(content[contype]['resources'], organization=orgs['organization_id']):
-                    continue
+# Include inactive organizations, JP as of 2024-11-26
+#                if not self.Is_Active_CIDER(content[contype]['resources'], organization=orgs['organization_id']):
+#                    continue
                 myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(orgs['organization_id']))
 
                 # Skip if this org already processed
@@ -974,8 +975,9 @@ class Router():
             cur[item.ID] = item
         
         for item in content[contype]['resources'] :
-            if not self.Is_Active_CIDER(content[contype]['resources'], resource=item['info_resourceid']):
-                continue
+# Include inactive resources, JP as of 2024-11-26
+#            if not self.Is_Active_CIDER(content[contype]['resources'], resource=item['info_resourceid']):
+#                continue
             myGLOBALURN = self.format_GLOBALURN(config['URNPREFIX'], str(item['resource_id']))
 
             self.CIDERRESOURCE_BASEID_URNMAP[item['resource_id']] = myGLOBALURN

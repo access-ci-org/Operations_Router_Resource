@@ -1,3 +1,6 @@
+v2.6.0 2024-11-26 JP
+- Include inactive organizations and resources
+
 v2.5.0 2024-03-20 Eric
 - Changed lmod description to command to get more info, as module load 
 
