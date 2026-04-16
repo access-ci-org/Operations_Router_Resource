@@ -738,10 +738,7 @@ class Router():
                 ResourceV4Local.objects.bulk_create(resource_v4_local_added)
             except Exception as err:
                 self.logger.warning(err)
-                return Response(
-                    [{"error": str(err)}],
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+                return {"error": str(err)}
 
         if len(payload["removed"]):
             # Delete items from Globus Search Index by querying on the ID field
@@ -755,10 +752,7 @@ class Router():
                 resource_v4_local_removed.delete()
             except Exception as err:
                 self.logger.warning(err)
-                return Response(
-                    [{"error": str(err)}],
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+                return {"error": str(err)}
 
         if len(payload["updated"]):
             # Ingest updated items into Globus Search Index
@@ -788,18 +782,17 @@ class Router():
                     gmeta_list["ingest_data"]["gmeta"].append(gmeta_entry)
                 except Exception as err:
                     self.logger.warning(err)
-                    return Response(
-                        [{"error": str(err)}],
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
+                    return {"error": str(err)}
             globus_process.ingest(gmeta_list=gmeta_list)
 
-        self.logger.info(payload)
-        return Response([{
+        payload_summary = {
+            "run_date": datetime.now(timezone.utc).isoformat(),
             "added": len(payload["added"]),
             "removed": len(payload["removed"]),
             "updated": len(payload["updated"]),
-        }])
+        }
+        self.logger.info(payload_summary)
+        return [payload_summary]
     ###      End Globus handlers     ###
     ####################################
 
