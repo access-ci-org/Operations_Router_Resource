@@ -1,3 +1,6 @@
+v3.0.0 2026-04-20 sturoscy
+- Convert the Resource Router to store metadata in Globus Search (CTT-712)
+
 v2.6.0 2024-11-26 JP
 - Include inactive organizations and resources
 

@@ -45,6 +45,7 @@ Central = pytz.timezone("US/Central")
 
 import django
 django.setup()
+import requests
 from django.conf import settings as django_settings
 from django.db import DataError, IntegrityError
 from django.forms.models import model_to_dict
@@ -574,8 +575,6 @@ class Router():
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
         self.Log_STEP(me)
         return(0, '')
-        
-
 
     ####################################
     def Write_Glue2_Network_Service(self, content, contype, config):
@@ -696,6 +695,106 @@ class Router():
         self.Log_STEP(me)
         return(0, '')
 
+    ####################################
+    ###        Globus handlers       ###
+    def Write_Glue2_Executable_Software_Globus(self, content, contype, config):
+        from utils.search import GlobusProcess
+        from utils.utility import generate_payloads
+
+        # Incoming Glue2 models from Glue2 Router API
+        application_handles = ApplicationHandle.objects.order_by(
+            '-CreationTime').selected_related()
+
+        # Build resourceV4 payload from remote GLUE2 resources (simulate incoming GLUE2 models in router)
+        payload = generate_payloads(application_handles)
+
+        # Initiate a Globus Process
+        # Handles ingest, delete_by_query, and update.
+        globus_process = GlobusProcess()
+
+        # Process added/removed/updated items in ResourceV4Local table
+        if len(payload["added"]):
+            # Ingest new items into Globus Search Index
+            gmeta_list = {
+                "ingest_type": "GMetaList",
+                "ingest_data": {
+                    "gmeta": []
+                }
+            }
+            for item in payload["added"]:
+                gmeta_entry = {
+                    "subject": item["ID"],
+                    "visible_to": ["public"],
+                    "content": item["EntityJSON"]
+                }
+                gmeta_list["ingest_data"]["gmeta"].append(gmeta_entry)
+            globus_process.ingest(gmeta_list=gmeta_list)
+
+            # Bulk create new ResourceV4Local entries for added items in PostgreSQL
+            resource_v4_local_added = [
+                ResourceV4Local(**item) for item in payload["added"]
+            ]
+            try:
+                ResourceV4Local.objects.bulk_create(resource_v4_local_added)
+            except Exception as err:
+                self.logger.warning(err)
+                return {"error": str(err)}
+
+        if len(payload["removed"]):
+            # Delete items from Globus Search Index by querying on the ID field
+            globus_process.delete_by_query(payload["removed"])
+
+            # Delete items from ResourceV4Local table in PostgreSQL
+            resource_v4_local_removed = ResourceV4Local.objects.filter(
+                LocalID__in=payload["removed"]
+            )
+            try:
+                resource_v4_local_removed.delete()
+            except Exception as err:
+                self.logger.warning(err)
+                return {"error": str(err)}
+
+        if len(payload["updated"]):
+            # Ingest updated items into Globus Search Index
+            gmeta_list = {
+                "ingest_type": "GMetaList",
+                "ingest_data": {
+                    "gmeta": []
+                }
+            }
+
+            for item in payload["updated"]:
+                try:
+                    resource = ResourceV4Local.objects.get(LocalID=item["LocalID"])
+                    for key, value in item["changes"].items():
+                        if key == "EntityJSON":
+                            for entity_json_key, entity_json_value in value.items():
+                                resource.EntityJSON[entity_json_key] = entity_json_value
+                        else:
+                            setattr(resource, key, value)
+                    resource.save()
+
+                    gmeta_entry = {
+                        "subject": resource.ID,
+                        "visible_to": ["public"],
+                        "content": resource.EntityJSON
+                    }
+                    gmeta_list["ingest_data"]["gmeta"].append(gmeta_entry)
+                except Exception as err:
+                    self.logger.warning(err)
+                    return {"error": str(err)}
+            globus_process.ingest(gmeta_list=gmeta_list)
+
+        payload_summary = {
+            "run_date": datetime.now(timezone.utc).isoformat(),
+            "added": len(payload["added"]),
+            "removed": len(payload["removed"]),
+            "updated": len(payload["updated"]),
+        }
+        self.logger.info(payload_summary)
+        return [payload_summary]
+    ###      End Globus handlers     ###
+    ####################################
 
     ####################################
     def Write_Glue2_Executable_Software(self, content, contype, config):
@@ -841,7 +940,6 @@ class Router():
         self.PROCESSING_SECONDS[me] += (datetime.now(timezone.utc) - start_utc).total_seconds()
         self.Log_STEP(me)
         return(0, '')
-
 
     #####################################################################
     # Function for loading CIDER (CyberInfrastructure Description Repository) data
