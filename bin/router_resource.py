@@ -50,6 +50,7 @@ from django.conf import settings as django_settings
 from django.db import DataError, IntegrityError
 from django.forms.models import model_to_dict
 from django_markup.markup import formatter
+from glue2.models import *
 from resource_v4.models import *
 from resource_v4.documents import *
 from resource_v4.process import *
@@ -288,7 +289,7 @@ class Router():
             file = open(path, 'r')
             lines = file.read()
             file.close()
-            if not re.match("^started with pid \d+$", lines) and not re.match("^$", lines):
+            if not re.match(r"^started with pid \d+$", lines) and not re.match(r"^$", lines):
                 ts = datetime.strftime(datetime.now(), '%Y-%m-%d_%H:%M:%S')
                 newpath = '{}.{}'.format(path, ts)
                 self.logger.debug('Saving previous daemon stdout to {}'.format(newpath))
@@ -703,14 +704,14 @@ class Router():
 
         # Incoming Glue2 models from Glue2 Router API
         application_handles = ApplicationHandle.objects.order_by(
-            '-CreationTime').selected_related()
+            '-CreationTime').select_related()
 
         # Build resourceV4 payload from remote GLUE2 resources (simulate incoming GLUE2 models in router)
-        payload = generate_payloads(application_handles)
+        payload = generate_payloads(application_handles, logger=self.logger)
 
         # Initiate a Globus Process
         # Handles ingest, delete_by_query, and update.
-        globus_process = GlobusProcess()
+        globus_process = GlobusProcess(config=config)
 
         # Process added/removed/updated items in ResourceV4Local table
         if len(payload["added"]):

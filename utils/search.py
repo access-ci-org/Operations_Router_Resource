@@ -6,18 +6,17 @@ import logging
 import requests
 from requests.exceptions import HTTPError
 
-from django.conf import settings
 from globus_sdk.scopes import SearchScopes
 
 logg2 = logging.getLogger("warehouse.logger")
 
 
 class GlobusProcess():
-    def __init__(self, *args, **kwargs):
+    def __init__(self, config, *args, **kwargs):
         self.app = globus_sdk.ClientApp(
             "ACCESS-CI Operations Warehouse Globus Service Client",
-            client_id=settings.GLOBUS_CLIENT_ID,
-            client_secret=settings.GLOBUS_CLIENT_SECRET
+            client_id=config.GLOBUS_CLIENT_ID,
+            client_secret=config.GLOBUS_CLIENT_SECRET
         )
 
         # Add scope requirements for the Authorizer
@@ -40,7 +39,7 @@ class GlobusProcess():
         self.search_client = globus_sdk.SearchClient(
             app=self.app, app_scopes=[SearchScopes.all]
         )
-        self.search_endpoint = settings.GLOBUS_SEARCH_INDEX_ID
+        self.search_endpoint = config.GLOBUS_SEARCH_INDEX_ID
 
     def ingest(self, gmeta_list):
         for i, (batch, size_bytes) in enumerate(
