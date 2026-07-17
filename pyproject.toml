@@ -1,0 +1,19 @@
+[project]
+name = "Operations_Warehouse_Routers"
+version = "1.0.0"
+description = "ACCESS Operations (CONECT) Warehouse Routers"
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "django==5.2.*",
+    "djangorestframework",
+    "django-markup",
+    "django-opensearch-dsl==0.5.*",
+    "amqp",
+    "docutils",
+    "globus-sdk",
+    "pid",
+    "psycopg2-binary",
+    "pytz",
+    "requests",
+]

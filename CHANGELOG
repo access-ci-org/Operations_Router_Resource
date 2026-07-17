@@ -1,3 +1,8 @@
+v3.1.0 2026-07-17 JP
+  - Python 3.12 compatibility: re.match strings must be regex's using r"
+  - New uv pyproject.toml
+  - Convert sbin/*.sh scripts to use uv
+
 v3.0.0 2026-04-20 sturoscy
 - Convert the Resource Router to store metadata in Globus Search (CTT-712)
 

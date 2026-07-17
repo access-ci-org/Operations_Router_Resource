@@ -288,7 +288,7 @@ class Router():
             file = open(path, 'r')
             lines = file.read()
             file.close()
-            if not re.match("^started with pid \d+$", lines) and not re.match("^$", lines):
+            if not re.match(r"^started with pid \d+$", lines) and not re.match(r"^$", lines):
                 ts = datetime.strftime(datetime.now(), '%Y-%m-%d_%H:%M:%S')
                 newpath = '{}.{}'.format(path, ts)
                 self.logger.debug('Saving previous daemon stdout to {}'.format(newpath))
