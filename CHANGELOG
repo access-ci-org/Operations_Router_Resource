@@ -1,3 +1,6 @@
+v3.2.2 2026-08-07 JP
+  - Fix selected_related -> select_related
+
 v3.2.1 2026-08-07 JP
   - Fix router PYTHONPATH so that util/ can be found
   - Import missing glue2.ApplicationHandle
@@ -11,13 +14,13 @@ v3.1.0 2026-07-17 JP
   - Convert sbin/*.sh scripts to use uv  - Convert sbin/*.sh scripts to use uv
 
 v3.0.0 2026-04-20 sturoscy
-- Convert the Resource Router to store metadata in Globus Search (CTT-712)
+  - Convert the Resource Router to store metadata in Globus Search (CTT-712)
 
 v2.6.0 2024-11-26 JP
-- Include inactive organizations and resources
+  - Include inactive organizations and resources
 
 v2.5.0 2024-03-20 Eric
-- Changed lmod description to command to get more info, as module load 
+  - Changed lmod description to command to get more info, as module load 
 
 v2.4.0 2024-02-07 JP
   - Start publishing CiDeR Science Gateways

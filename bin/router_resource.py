@@ -704,7 +704,7 @@ class Router():
 
         # Incoming Glue2 models from Glue2 Router API
         application_handles = ApplicationHandle.objects.order_by(
-            '-CreationTime').selected_related()
+            '-CreationTime').select_related()
 
         # Build resourceV4 payload from remote GLUE2 resources (simulate incoming GLUE2 models in router)
         payload = generate_payloads(application_handles)
