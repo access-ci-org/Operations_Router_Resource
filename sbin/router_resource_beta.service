@@ -1,0 +1,14 @@
+[Unit]
+Description=Information Sharing Platform Resource Router Beta
+After=network.target remote-fs.target nss-lookup.target
+
+[Service]
+Type=simple
+EnvironmentFile=%APP_HOME%/sbin/%APP_NAME%_beta.sysconfig
+ExecStart=%APP_HOME%/sbin/%APP_NAME%_beta.service.sh start
+User=software
+Group=admin
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
