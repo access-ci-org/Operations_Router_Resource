@@ -1,3 +1,6 @@
+v3.2.4 2026-08-07 JP
+  - Pass config to GlobusProcess needed to CLIENT_ID, SECRET, and INDEX_ID
+
 v3.2.3 2026-08-07 JP
   - Enable utils/utility.py to generate log messages
   - Import missing models in utils/utility.py
