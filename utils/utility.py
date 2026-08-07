@@ -1,5 +1,8 @@
-def generate_payloads(application_handles):
+def generate_payloads(application_handles, logger):
     import hashlib
+
+    from cider.models import CiderInfrastructure
+    from resource_v4.models import ResourceV4Local
 
     def chunk_dict(data_dict, chunk_size):
         for i in range(0, len(data_dict), chunk_size):
@@ -16,6 +19,9 @@ def generate_payloads(application_handles):
             cider = CiderInfrastructure.objects.filter(
                 info_resourceid=application.ResourceID
             ).first()
+            if not cider:
+                logger.warning(f"No CiderInfrastructure found for ResourceID {application.ResourceID}")
+                continue
             environment_id = application.ID
             environment_id_utf8 = environment_id.encode('utf-8')
             environment_id_hash = f"urn:ogf.org:glue2:access-ci.org:executable.software:{hashlib.md5(environment_id_utf8).hexdigest()}"

@@ -701,13 +701,13 @@ class Router():
     def Write_Glue2_Executable_Software_Globus(self, content, contype, config):
         from utils.search import GlobusProcess
         from utils.utility import generate_payloads
-
+   
         # Incoming Glue2 models from Glue2 Router API
         application_handles = ApplicationHandle.objects.order_by(
             '-CreationTime').select_related()
 
         # Build resourceV4 payload from remote GLUE2 resources (simulate incoming GLUE2 models in router)
-        payload = generate_payloads(application_handles)
+        payload = generate_payloads(application_handles, logger=self.logger)
 
         # Initiate a Globus Process
         # Handles ingest, delete_by_query, and update.
@@ -793,7 +793,7 @@ class Router():
             "updated": len(payload["updated"]),
         }
         self.logger.info(payload_summary)
-        return [payload_summary]
+        return (0, str(payload_summary))
     ###      End Globus handlers     ###
     ####################################
 

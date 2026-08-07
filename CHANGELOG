@@ -1,3 +1,8 @@
+v3.2.3 2026-08-07 JP
+  - Enable utils/utility.py to generate log messages
+  - Import missing models in utils/utility.py
+  - Return correct handler response
+
 v3.2.2 2026-08-07 JP
   - Fix selected_related -> select_related
 
