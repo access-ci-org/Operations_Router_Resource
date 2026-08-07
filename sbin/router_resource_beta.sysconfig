@@ -4,7 +4,7 @@ APP_BIN=%APP_HOME%/PROD/bin/%APP_NAME%.py
 # Add any command line options for your daemon here
 APP_OPTS="-l debug -c %APP_HOME%/conf/%APP_NAME%_beta.conf"
 
-PYTHONPATH=%APP_HOME%/PROD/lib:%WAREHOUSE_DJANGO%
+PYTHONPATH=%APP_HOME%/PROD:%WAREHOUSE_DJANGO%
 
 APP_CONFIG=%APP_HOME%/conf/django_beta_router.conf
 DJANGO_SETTINGS_MODULE=Operations_Warehouse_Django.settings

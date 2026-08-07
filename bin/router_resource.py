@@ -50,6 +50,7 @@ from django.conf import settings as django_settings
 from django.db import DataError, IntegrityError
 from django.forms.models import model_to_dict
 from django_markup.markup import formatter
+from glue2.models import ApplicationHandle
 from resource_v4.models import *
 from resource_v4.documents import *
 from resource_v4.process import *

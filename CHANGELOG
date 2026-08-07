@@ -1,3 +1,7 @@
+v3.2.1 2026-08-07 JP
+  - Fix router PYTHONPATH so that util/ can be found
+  - Import missing glue2.ApplicationHandle
+
 v3.2.0 2026-08-07 JP
   - New beta router, currently uses same app with different config
 

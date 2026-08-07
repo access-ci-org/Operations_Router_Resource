@@ -18,7 +18,7 @@ fi
 APP_BIN=${APP_SOURCE}/bin/${APP_NAME}.py
 APP_OPTS="-l info -c ${APP_HOME}/conf/${APP_NAME}_beta.conf"
 
-export PYTHONPATH=${APP_SOURCE}/lib:${WAREHOUSE_DJANGO}
+export PYTHONPATH=${APP_SOURCE}:${WAREHOUSE_DJANGO}
 export APP_CONFIG=${APP_HOME}/conf/django_beta_router.conf
 export DJANGO_SETTINGS_MODULE=Operations_Warehouse_Django.settings
 
